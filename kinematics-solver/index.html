@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AP Physics C — 1D & 2D Kinematics Solver</title>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#111a2e; --text:#e9eefc; --muted:#b9c3e3;
+      --line:rgba(255,255,255,.12); --accent:#6ea8ff; --bad:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(1200px 600px at 30% -10%, rgba(110,168,255,0.25), transparent 60%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(126,224,129,0.18), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      line-height:1.35;
+    }
+    .wrap{max-width:980px;margin:0 auto;padding:18px}
+    header{padding:10px 0 14px}
+    h1{margin:0 0 6px;font-size:1.25rem;letter-spacing:.2px}
+    .sub{margin:0;color:var(--muted);font-size:.95rem}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media(min-width:860px){.grid{grid-template-columns:1fr 1fr;align-items:start}}
+    .card{
+      background:rgba(17,26,46,.82);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      backdrop-filter: blur(6px);
+    }
+    .card h2{margin:0 0 10px;font-size:1.05rem}
+    label{display:block;margin:10px 0 6px;color:var(--muted);font-size:.92rem}
+    .row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+    input{
+      width:100%;
+      padding:11px 12px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.18);
+      color:var(--text);
+      font-size:1rem;
+      outline:none;
+    }
+    input:focus{
+      border-color:rgba(110,168,255,.7);
+      box-shadow:0 0 0 3px rgba(110,168,255,.18);
+    }
+    .unit{
+      padding:9px 10px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      color:var(--muted);
+      font-size:.92rem;
+      background:rgba(0,0,0,.10);
+      min-width:84px;
+      text-align:center;
+      user-select:none;
+    }
+    .hint{margin:10px 0 0;color:var(--muted);font-size:.88rem}
+    button{
+      width:100%;
+      margin-top:14px;
+      padding:12px 14px;
+      border:none;border-radius:12px;
+      background:linear-gradient(135deg, rgba(110,168,255,.95), rgba(110,168,255,.75));
+      color:#061027;
+      font-weight:700;
+      font-size:1rem;
+      cursor:pointer;
+    }
+    button:active{transform:translateY(1px)}
+    .out{display:grid;gap:10px}
+    .kv{
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:12px;
+      background:rgba(0,0,0,.12);
+    }
+    .k{color:var(--muted);font-size:.9rem;margin-bottom:6px}
+    .v{font-size:1.02rem;font-weight:650;word-break:break-word}
+    .msg{
+      margin-top:10px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:12px;
+      background:rgba(0,0,0,.12);
+      color:var(--muted);
+      font-size:.92rem;
+      display:none;
+    }
+    .msg.error{
+      display:block;
+      border-color:rgba(255,107,107,.55);
+      background:rgba(255,107,107,.10);
+      color:#ffd2d2;
+    }
+    .msg.ok{display:block}
+    .pill{
+      display:inline-block;
+      padding:4px 8px;
+      border-radius:999px;
+      font-size:.85rem;
+      border:1px solid var(--line);
+      color:var(--muted);
+      background:rgba(0,0,0,.10);
+    }
+    .topbar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:6px;
+    }
+    .toggle{
+      display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.92rem;
+      border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:rgba(0,0,0,.10);
+    }
+    .toggle input{width:auto}
+    .twoCols{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:12px;
+    }
+    @media(min-width:860px){.twoCols{grid-template-columns:1fr 1fr}}
+    .eqList{margin:0;padding-left:18px;color:var(--muted);font-size:.92rem}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <!-- NAV GOES HERE -->
+    <nav class="nav">
+      <a class="brand" href="/">AP Tools</a>
+      <div class="links">
+        <a href="/torque-calculator/">Torque</a>
+        <a href="/kinematics-solver/">Kinematics</a>
+        <a href="/calculus-solver/">Calculus</a>
+        <a href="/about/">About</a>
+        <a href="/privacy-policy/">Privacy</a>
+      </div>
+    </nav>
+    <!-- NAV ENDS HERE -->
+
+    <header>
+      <h1>1D & 2D Kinematics Solver</h1>
+      <p class="sub">Enter any <span class="pill">3</span> of <span class="pill">v₀, v, a, t, Δx</span>. Optional <span class="pill">2D</span> solves x and y separately.</p>
+    </header>
+
+    <div class="grid">
+      <!-- INPUTS -->
+      <section class="card" aria-label="Inputs">
+        <div class="topbar">
+          <h2 style="margin:0">Inputs</h2>
+          <label class="toggle" title="Toggle 2D (projectile) mode">
+            <input id="mode2d" type="checkbox" />
+            2D mode (x & y)
+          </label>
+        </div>
+
+        <!-- Shared time (used in both 1D and 2D) -->
+        <label for="t_shared">Time</label>
+        <div class="row">
+          <input id="t_shared" type="number" inputmode="decimal" step="any" placeholder="e.g., 2.0" />
+          <div class="unit">s</div>
+        </div>
+
+        <!-- 1D inputs -->
+        <div id="oneDBox">
+          <label for="v0_1d">Initial velocity (v₀)</label>
+          <div class="row">
+            <input id="v0_1d" type="number" inputmode="decimal" step="any" placeholder="e.g., 5" />
+            <div class="unit">m/s</div>
+          </div>
+
+          <label for="v_1d">Final velocity (v)</label>
+          <div class="row">
+            <input id="v_1d" type="number" inputmode="decimal" step="any" placeholder="e.g., 17" />
+            <div class="unit">m/s</div>
+          </div>
+
+          <label for="a_1d">Acceleration (a)</label>
+          <div class="row">
+            <input id="a_1d" type="number" inputmode="decimal" step="any" placeholder="e.g., 6" />
+            <div class="unit">m/s²</div>
+          </div>
+
+          <label for="x_1d">Displacement (Δx)</label>
+          <div class="row">
+            <input id="x_1d" type="number" inputmode="decimal" step="any" placeholder="e.g., 22" />
+            <div class="unit">m</div>
+          </div>
+        </div>
+
+        <!-- 2D inputs -->
+        <div id="twoDBox" style="display:none">
+          <div class="twoCols">
+            <div class="kv">
+              <div class="k">x-direction (horizontal)</div>
+
+              <label for="v0_x">Initial velocity (v₀x)</label>
+              <div class="row">
+                <input id="v0_x" type="number" inputmode="decimal" step="any" placeholder="e.g., 12" />
+                <div class="unit">m/s</div>
+              </div>
+
+              <label for="v_x">Final velocity (vx)</label>
+              <div class="row">
+                <input id="v_x" type="number" inputmode="decimal" step="any" placeholder="e.g., 12" />
+                <div class="unit">m/s</div>
+              </div>
+
+              <label for="a_x">Acceleration (ax)</label>
+              <div class="row">
+                <input id="a_x" type="number" inputmode="decimal" step="any" placeholder="e.g., 0" />
+                <div class="unit">m/s²</div>
+              </div>
+
+              <label for="x_x">Displacement (Δx)</label>
+              <div class="row">
+                <input id="x_x" type="number" inputmode="decimal" step="any" placeholder="e.g., 24" />
+                <div class="unit">m</div>
+              </div>
+            </div>
+
+            <div class="kv">
+              <div class="k">y-direction (vertical)</div>
+
+              <label for="v0_y">Initial velocity (v₀y)</label>
+              <div class="row">
+                <input id="v0_y" type="number" inputmode="decimal" step="any" placeholder="e.g., 8" />
+                <div class="unit">m/s</div>
+              </div>
+
+              <label for="v_y">Final velocity (vy)</label>
+              <div class="row">
+                <input id="v_y" type="number" inputmode="decimal" step="any" placeholder="e.g., -6" />
+                <div class="unit">m/s</div>
+              </div>
+
+              <label for="a_y">Acceleration (ay)</label>
+              <div class="row">
+                <input id="a_y" type="number" inputmode="decimal" step="any" placeholder="e.g., -9.8" />
+                <div class="unit">m/s²</div>
+              </div>
+
+              <label for="x_y">Displacement (Δy)</label>
+              <div class="row">
+                <input id="x_y" type="number" inputmode="decimal" step="any" placeholder="e.g., 0" />
+                <div class="unit">m</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="hint">
+          Notes: In 2D mode, <strong>time t is shared</strong> for x and y. The solver tries to compute missing values using standard constant-acceleration equations.
+        </p>
+
+        <button id="calcBtn" type="button">Calculate</button>
+        <div id="msg" class="msg"></div>
+      </section>
+
+      <!-- OUTPUTS -->
+      <section class="card" aria-label="Outputs">
+        <h2>Results</h2>
+
+        <div id="results" class="out">
+          <div class="kv">
+            <div class="k">Solved values</div>
+            <div id="solvedBox" class="v">—</div>
+          </div>
+
+          <div class="kv">
+            <div class="k">Equations used</div>
+            <div id="eqBox" class="v">—</div>
+          </div>
+
+          <div class="kv">
+            <div class="k">Consistency check</div>
+            <div id="checkBox" class="v">—</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ============================
+    // AP Physics C Kinematics Solver
+    // ============================
+    // We assume constant acceleration.
+    //
+    // Variables per axis:
+    //   v0 = initial velocity
+    //   v  = final velocity
+    //   a  = acceleration
+    //   t  = time
+    //   x  = displacement (Δx)
+    //
+    // Core kinematics equations (per axis):
+    //   (1) v  = v0 + a t
+    //   (2) x  = v0 t + (1/2) a t^2
+    //   (3) x  = v t - (1/2) a t^2
+    //   (4) v^2 = v0^2 + 2 a x
+    //   (5) x  = ((v0 + v)/2) t
+    //
+    // Strategy:
+    //   - Parse whatever the user provided (any 3 of the 5).
+    //   - Repeatedly apply equations to solve any unknown that is uniquely solvable.
+    //   - Some cases require solving a quadratic for time t.
+    //   - In 2D mode, solve x- and y- directions independently, but share the same time t.
+    //     If one axis finds t, we propagate it to the other axis.
+    //
+    // Robustness notes:
+    //   - If an equation yields two solutions (quadratic or square root), we choose a reasonable one:
+    //       * time: choose a positive root if possible
+    //       * velocity roots: choose root matching the sign of an already-known velocity if possible, else the + root
+    //   - After solving, we check consistency (do the equations agree?) within a tolerance.
+
+    const $ = (id) => document.getElementById(id);
+
+    const mode2d = $("mode2d");
+    const oneDBox = $("oneDBox");
+    const twoDBox = $("twoDBox");
+    const btn = $("calcBtn");
+    const msgEl = $("msg");
+
+    const solvedBox = $("solvedBox");
+    const eqBox = $("eqBox");
+    const checkBox = $("checkBox");
+
+    function showMsg(text, kind) {
+      msgEl.className = "msg " + (kind || "ok");
+      msgEl.textContent = text;
+      msgEl.style.display = "block";
+    }
+    function clearMsg() {
+      msgEl.className = "msg";
+      msgEl.textContent = "";
+      msgEl.style.display = "none";
+    }
+
+    mode2d.addEventListener("change", () => {
+      const is2d = mode2d.checked;
+      oneDBox.style.display = is2d ? "none" : "block";
+      twoDBox.style.display = is2d ? "block" : "none";
+      clearMsg();
+      solvedBox.textContent = "—";
+      eqBox.textContent = "—";
+      checkBox.textContent = "—";
+    });
+
+    // Helpers
+    function nOrNull(val) {
+      const s = String(val ?? "").trim();
+      if (s === "") return null;
+      const num = Number(s);
+      return Number.isFinite(num) ? num : NaN;
+    }
+
+    function fmt(x) {
+      if (x === null || !Number.isFinite(x)) return "—";
+      return Number.parseFloat(x.toPrecision(5)).toString();
+    }
+
+    function closeEnough(a, b, tolAbs=1e-6, tolRel=1e-4) {
+      const diff = Math.abs(a - b);
+      const scale = Math.max(1, Math.abs(a), Math.abs(b));
+      return diff <= tolAbs + tolRel * scale;
+    }
+
+    function pickPositiveRoot(r1, r2) {
+      // Prefer positive times. If both positive, choose the smaller (often the "first event").
+      const cands = [r1, r2].filter(x => Number.isFinite(x) && x > 0);
+      if (cands.length === 0) return null;
+      return Math.min(...cands);
+    }
+
+    function solveQuadratic(A, B, C) {
+      // Solve A t^2 + B t + C = 0
+      if (!Number.isFinite(A) || !Number.isFinite(B) || !Number.isFinite(C)) return null;
+      if (Math.abs(A) < 1e-12) { // linear
+        if (Math.abs(B) < 1e-12) return null;
+        return [-C / B];
+      }
+      const D = B*B - 4*A*C;
+      if (D < -1e-12) return null;
+      const Dclamped = Math.max(0, D);
+      const sqrtD = Math.sqrt(Dclamped);
+      return [(-B + sqrtD) / (2*A), (-B - sqrtD) / (2*A)];
+    }
+
+    // Axis state container
+    function makeAxisState(v0, v, a, t, x) {
+      return { v0, v, a, t, x, used: [] };
+    }
+
+    // Try to solve one step; return true if we filled any new variable
+    function trySolveOnce(st) {
+      // Short names
+      const v0 = st.v0, v = st.v, a = st.a, t = st.t, x = st.x;
+
+      // Utility to set a field once and record equation
+      function setField(name, value, eq) {
+        if (st[name] === null && Number.isFinite(value)) {
+          st[name] = value;
+          st.used.push(eq);
+          return true;
+        }
+        return false;
+      }
+
+      // (1) v = v0 + a t
+      if (v === null && v0 !== null && a !== null && t !== null)
+        if (setField("v", v0 + a*t, "v = v₀ + a t")) return true;
+
+      if (v0 === null && v !== null && a !== null && t !== null)
+        if (setField("v0", v - a*t, "v₀ = v − a t")) return true;
+
+      if (a === null && v !== null && v0 !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("a", (v - v0)/t, "a = (v − v₀)/t")) return true;
+
+      if (t === null && v !== null && v0 !== null && a !== null && Math.abs(a) > 1e-12)
+        if (setField("t", (v - v0)/a, "t = (v − v₀)/a")) return true;
+
+      // (2) x = v0 t + 1/2 a t^2
+      if (x === null && v0 !== null && a !== null && t !== null)
+        if (setField("x", v0*t + 0.5*a*t*t, "Δx = v₀ t + ½ a t²")) return true;
+
+      if (v0 === null && x !== null && a !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("v0", (x - 0.5*a*t*t)/t, "v₀ = (Δx − ½ a t²)/t")) return true;
+
+      if (a === null && x !== null && v0 !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("a", 2*(x - v0*t)/(t*t), "a = 2(Δx − v₀ t)/t²")) return true;
+
+      // Solve (2) for time: ½ a t² + v0 t − x = 0
+      if (t === null && x !== null && v0 !== null && a !== null) {
+        const roots = solveQuadratic(0.5*a, v0, -x);
+        if (roots && roots.length) {
+          const tPick = roots.length === 1 ? roots[0] : pickPositiveRoot(roots[0], roots[1]);
+          if (tPick !== null && setField("t", tPick, "Solve: ½ a t² + v₀ t − Δx = 0")) return true;
+        }
+      }
+
+      // (3) x = v t − 1/2 a t^2
+      if (x === null && v !== null && a !== null && t !== null)
+        if (setField("x", v*t - 0.5*a*t*t, "Δx = v t − ½ a t²")) return true;
+
+      if (v === null && x !== null && a !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("v", (x + 0.5*a*t*t)/t, "v = (Δx + ½ a t²)/t")) return true;
+
+      if (a === null && x !== null && v !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("a", 2*(v*t - x)/(t*t), "a = 2(v t − Δx)/t²")) return true;
+
+      // Solve (3) for time: −½ a t² + v t − x = 0
+      if (t === null && x !== null && v !== null && a !== null) {
+        const roots = solveQuadratic(-0.5*a, v, -x);
+        if (roots && roots.length) {
+          const tPick = roots.length === 1 ? roots[0] : pickPositiveRoot(roots[0], roots[1]);
+          if (tPick !== null && setField("t", tPick, "Solve: −½ a t² + v t − Δx = 0")) return true;
+        }
+      }
+
+      // (4) v^2 = v0^2 + 2 a x
+      if (a === null && v !== null && v0 !== null && x !== null && Math.abs(x) > 1e-12)
+        if (setField("a", (v*v - v0*v0)/(2*x), "a = (v² − v₀²)/(2Δx)")) return true;
+
+      if (x === null && v !== null && v0 !== null && a !== null && Math.abs(a) > 1e-12)
+        if (setField("x", (v*v - v0*v0)/(2*a), "Δx = (v² − v₀²)/(2a)")) return true;
+
+      // Solve for v or v0 via square root (choose a reasonable sign)
+      if (v === null && v0 !== null && a !== null && x !== null) {
+        const inside = v0*v0 + 2*a*x;
+        if (inside >= -1e-10) {
+          const s = Math.sqrt(Math.max(0, inside));
+          // If v0 known, often v keeps same sign when a small; we pick sign matching v0 if possible, else +.
+          const vPick = (v0 < 0) ? -s : s;
+          if (setField("v", vPick, "v = ±√(v₀² + 2aΔx)")) return true;
+        }
+      }
+      if (v0 === null && v !== null && a !== null && x !== null) {
+        const inside = v*v - 2*a*x;
+        if (inside >= -1e-10) {
+          const s = Math.sqrt(Math.max(0, inside));
+          const v0Pick = (v < 0) ? -s : s;
+          if (setField("v0", v0Pick, "v₀ = ±√(v² − 2aΔx)")) return true;
+        }
+      }
+
+      // (5) x = ((v0 + v)/2) t
+      if (x === null && v0 !== null && v !== null && t !== null)
+        if (setField("x", 0.5*(v0 + v)*t, "Δx = ((v₀ + v)/2) t")) return true;
+
+      if (t === null && x !== null && v0 !== null && v !== null && Math.abs(v0+v) > 1e-12)
+        if (setField("t", 2*x/(v0 + v), "t = 2Δx/(v₀ + v)")) return true;
+
+      if (v === null && x !== null && v0 !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("v", 2*x/t - v0, "v = 2Δx/t − v₀")) return true;
+
+      if (v0 === null && x !== null && v !== null && t !== null && Math.abs(t) > 1e-12)
+        if (setField("v0", 2*x/t - v, "v₀ = 2Δx/t − v")) return true;
+
+      return false;
+    }
+
+    function solveAxis(st, maxIters=30) {
+      // Repeatedly apply "single-step" solves until no progress.
+      let progressed = true;
+      let iter = 0;
+      while (progressed && iter < maxIters) {
+        progressed = trySolveOnce(st);
+        iter++;
+      }
+      return st;
+    }
+
+    function countKnown(st) {
+      return ["v0","v","a","t","x"].reduce((acc,k)=>acc + (st[k] !== null ? 1 : 0), 0);
+    }
+
+    function checkConsistency(st) {
+      // Evaluate several equations (only when all needed variables exist).
+      // If any mismatch beyond tolerance, mark inconsistent.
+      const issues = [];
+
+      const v0=st.v0, v=st.v, a=st.a, t=st.t, x=st.x;
+
+      function addIssue(name, lhs, rhs) {
+        if (!closeEnough(lhs, rhs)) {
+          issues.push(`${name} mismatch`);
+        }
+      }
+
+      if (v!==null && v0!==null && a!==null && t!==null) addIssue("v = v₀ + a t", v, v0 + a*t);
+      if (x!==null && v0!==null && a!==null && t!==null) addIssue("Δx = v₀ t + ½ a t²", x, v0*t + 0.5*a*t*t);
+      if (x!==null && v!==null && a!==null && t!==null) addIssue("Δx = v t − ½ a t²", x, v*t - 0.5*a*t*t);
+      if (v!==null && v0!==null && a!==null && x!==null) addIssue("v² = v₀² + 2aΔx", v*v, v0*v0 + 2*a*x);
+      if (x!==null && v0!==null && v!==null && t!==null) addIssue("Δx = ((v₀+v)/2)t", x, 0.5*(v0+v)*t);
+
+      return issues;
+    }
+
+    function axisSolvedText(label, st) {
+      return `${label}: v₀=${fmt(st.v0)} m/s, v=${fmt(st.v)} m/s, a=${fmt(st.a)} m/s², t=${fmt(st.t)} s, Δx=${fmt(st.x)} m`;
+    }
+
+    function equationsUsedText(st) {
+      if (!st.used.length) return "—";
+      // Remove duplicates while preserving order (students like a clean list)
+      const seen = new Set();
+      const unique = [];
+      for (const e of st.used) {
+        if (!seen.has(e)) { seen.add(e); unique.push(e); }
+      }
+      return unique.map(e => "• " + e).join("\n");
+    }
+
+    btn.addEventListener("click", () => {
+      clearMsg();
+
+      const is2d = mode2d.checked;
+
+      // Shared time
+      const tShared = nOrNull($("t_shared").value);
+      if (Number.isNaN(tShared)) {
+        showMsg("Time must be a valid number (or blank).", "error");
+        return;
+      }
+
+      if (!is2d) {
+        // -------- 1D MODE --------
+        const v0 = nOrNull($("v0_1d").value);
+        const v  = nOrNull($("v_1d").value);
+        const a  = nOrNull($("a_1d").value);
+        const x  = nOrNull($("x_1d").value);
+
+        for (const [name,val] of [["v₀",v0],["v",v],["a",a],["Δx",x]]) {
+          if (Number.isNaN(val)) { showMsg(`${name} must be a valid number (or blank).`, "error"); return; }
+        }
+
+        const st = makeAxisState(v0, v, a, tShared, x);
+
+        if (countKnown(st) < 3) {
+          showMsg("Enter at least 3 known values among v₀, v, a, t, and Δx.", "error");
+          solvedBox.textContent = "—"; eqBox.textContent = "—"; checkBox.textContent = "—";
+          return;
+        }
+
+        solveAxis(st);
+
+        // Output
+        solvedBox.textContent = axisSolvedText("1D", st);
+        eqBox.textContent = equationsUsedText(st);
+
+        const issues = checkConsistency(st);
+        if (issues.length) {
+          checkBox.textContent = `Potential inconsistency: ${issues.join(", ")}. (Check signs/units or over-specified inputs.)`;
+        } else {
+          checkBox.textContent = "Looks consistent with constant-acceleration kinematics (within tolerance).";
+        }
+
+        // If still missing something, note it (no drama)
+        if (countKnown(st) < 5) {
+          showMsg("Solved what it could from your inputs. Add another known value to determine the remaining unknown(s).", "ok");
+        }
+
+      } else {
+        // -------- 2D MODE --------
+        const ax = makeAxisState(
+          nOrNull($("v0_x").value),
+          nOrNull($("v_x").value),
+          nOrNull($("a_x").value),
+          tShared,
+          nOrNull($("x_x").value)
+        );
+        const ay = makeAxisState(
+          nOrNull($("v0_y").value),
+          nOrNull($("v_y").value),
+          nOrNull($("a_y").value),
+          tShared,
+          nOrNull($("x_y").value)
+        );
+
+        // Validate numeric inputs (NaN = invalid)
+        const fields = [
+          ["v₀x", ax.v0], ["vx", ax.v], ["ax", ax.a], ["Δx", ax.x],
+          ["v₀y", ay.v0], ["vy", ay.v], ["ay", ay.a], ["Δy", ay.x]
+        ];
+        for (const [name,val] of fields) {
+          if (Number.isNaN(val)) { showMsg(`${name} must be a valid number (or blank).`, "error"); return; }
+        }
+
+        // In 2D, we still want at least 3 knowns per axis *including shared t if present*.
+        // But we allow y to solve time and then propagate to x (very common in projectile motion).
+        const knownX = countKnown(ax);
+        const knownY = countKnown(ay);
+
+        if (knownX < 2 && knownY < 2 && tShared === null) {
+          showMsg("In 2D mode, give enough info in x or y to start solving (e.g., v₀y, ay, Δy).", "error");
+          return;
+        }
+
+        // First pass: solve y, then share t if y found it.
+        solveAxis(ay);
+        if (ax.t === null && ay.t !== null) ax.t = ay.t;
+        if (ay.t === null && ax.t !== null) ay.t = ax.t;
+
+        // Solve x now (using shared t if available), then re-solve y in case x found t.
+        solveAxis(ax);
+        if (ay.t === null && ax.t !== null) ay.t = ax.t;
+        solveAxis(ay);
+
+        // Output combined
+        solvedBox.textContent = `${axisSolvedText("x", ax)}\n${axisSolvedText("y", ay)}`;
+
+        const eqLines = [];
+        const ex = equationsUsedText(ax);
+        const ey = equationsUsedText(ay);
+        eqLines.push("x-equations:\n" + ex);
+        eqLines.push("y-equations:\n" + ey);
+        eqBox.textContent = eqLines.join("\n\n");
+
+        const issuesX = checkConsistency(ax);
+        const issuesY = checkConsistency(ay);
+
+        if (issuesX.length || issuesY.length) {
+          const parts = [];
+          if (issuesX.length) parts.push(`x: ${issuesX.join(", ")}`);
+          if (issuesY.length) parts.push(`y: ${issuesY.join(", ")}`);
+          checkBox.textContent = `Potential inconsistency: ${parts.join(" | ")}. (Check signs/units or over-specified inputs.)`;
+        } else {
+          checkBox.textContent = "x and y results look consistent with constant-acceleration kinematics (within tolerance).";
+        }
+
+        // Helpful note if time still unknown
+        if (ax.t === null || ay.t === null) {
+          showMsg("Time is still undetermined. Add enough info in x or y to solve for t (common: v₀y, ay, Δy).", "ok");
+        }
+      }
+    });
+  </script>
+</body>
+</html>
