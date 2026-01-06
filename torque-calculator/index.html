@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AP Physics C — Torque & Rotation Calculator</title>
+  <style>
+    :root{
+      --bg: #0b1220;
+      --card: #111a2e;
+      --text: #e9eefc;
+      --muted: #b9c3e3;
+      --line: rgba(255,255,255,0.12);
+      --accent: #6ea8ff;
+      --bad: #ff6b6b;
+      --good: #7ee081;
+    }
+
+    *{ box-sizing: border-box; }
+    body{
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 30% -10%, rgba(110,168,255,0.25), transparent 60%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(126,224,129,0.18), transparent 55%),
+                  var(--bg);
+      color: var(--text);
+      line-height: 1.35;
+    }
+
+    .wrap{
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    header{
+      padding: 10px 0 14px;
+    }
+    h1{
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+      letter-spacing: 0.2px;
+    }
+    .sub{
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .grid{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    @media (min-width: 800px){
+      .grid{
+        grid-template-columns: 1fr 1fr;
+        align-items: start;
+      }
+    }
+
+    .card{
+      background: rgba(17,26,46,0.82);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      backdrop-filter: blur(6px);
+    }
+
+    .card h2{
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+    }
+
+    label{
+      display: block;
+      margin: 10px 0 6px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .row{
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input{
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.18);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+    input:focus{
+      border-color: rgba(110,168,255,0.7);
+      box-shadow: 0 0 0 3px rgba(110,168,255,0.18);
+    }
+
+    .unit{
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.92rem;
+      background: rgba(0,0,0,0.10);
+      min-width: 70px;
+      text-align: center;
+    }
+
+    .hint{
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    button{
+      width: 100%;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(110,168,255,0.95), rgba(110,168,255,0.75));
+      color: #061027;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:active{ transform: translateY(1px); }
+
+    .out{
+      display: grid;
+      gap: 10px;
+    }
+
+    .kv{
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(0,0,0,0.12);
+    }
+    .k{
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+    .v{
+      font-size: 1.05rem;
+      font-weight: 650;
+      word-break: break-word;
+    }
+
+    .error{
+      border-color: rgba(255,107,107,0.55);
+      background: rgba(255,107,107,0.10);
+      color: #ffd2d2;
+    }
+
+    .pill{
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(0,0,0,0.10);
+    }
+
+    footer{
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+
+    code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <!-- NAV GOES HERE -->
+    <nav class="nav">
+      <a class="brand" href="/">AP Tools</a>
+      <div class="links">
+        <a href="/torque-calculator/">Torque</a>
+        <a href="/kinematics-solver/">Kinematics</a>
+        <a href="/calculus-solver/">Calculus</a>
+        <a href="/about/">About</a>
+        <a href="/privacy-policy/">Privacy</a>
+      </div>
+    </nav>
+    <!-- NAV ENDS HERE -->
+
+    <header>
+      <h1>Torque & Rotational Motion Calculator</h1>
+      <p class="sub">AP Physics C • Uses <span class="pill">τ = rF sinθ</span> and (optional) <span class="pill">α = τ / I</span></p>
+    </header>
+
+    <div class="grid">
+      <!-- INPUTS -->
+      <section class="card" aria-label="Inputs">
+        <h2>Inputs</h2>
+
+        <label for="force">Force</label>
+        <div class="row">
+          <input id="force" type="number" inputmode="decimal" step="any" placeholder="e.g., 12.5" />
+          <div class="unit">N</div>
+        </div>
+
+        <label for="lever">Lever arm length</label>
+        <div class="row">
+          <input id="lever" type="number" inputmode="decimal" step="any" placeholder="e.g., 0.40" />
+          <div class="unit">m</div>
+        </div>
+
+        <label for="angle">Angle between <em>r</em> and <em>F</em></label>
+        <div class="row">
+          <input id="angle" type="number" inputmode="decimal" step="any" placeholder="e.g., 30" />
+          <div class="unit">deg</div>
+        </div>
+
+        <label for="inertia">Moment of inertia (optional)</label>
+        <div class="row">
+          <input id="inertia" type="number" inputmode="decimal" step="any" placeholder="e.g., 0.025" />
+          <div class="unit">kg·m²</div>
+        </div>
+
+        <p class="hint">
+          Sign convention: <strong>positive torque = counterclockwise</strong>, negative = clockwise.
+          This calculator assumes you enter the force with a sign (+/−) consistent with your chosen convention.
+        </p>
+
+        <button id="calcBtn" type="button">Calculate</button>
+      </section>
+
+      <!-- OUTPUTS -->
+      <section class="card" aria-label="Outputs">
+        <h2>Outputs</h2>
+
+        <div id="output" class="out">
+          <div class="kv">
+            <div class="k">Torque, τ</div>
+            <div class="v">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Direction</div>
+            <div class="v">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Angular acceleration, α (if I provided)</div>
+            <div class="v">—</div>
+          </div>
+        </div>
+
+        <div id="msg" class="kv" style="margin-top:10px; display:none;"></div>
+      </section>
+    </div>
+
+    <footer>
+      Tip: θ is the angle between the lever arm vector <code>r</code> (pivot → point of application) and the force <code>F</code>.
+    </footer>
+  </div>
+
+  <script>
+    // =========================
+    // AP Physics C Torque Notes
+    // =========================
+    // Torque magnitude about a pivot is:
+    //   τ = r F sin(θ)
+    // where:
+    //   r = lever arm length (meters)
+    //   F = force (Newtons)
+    //   θ = angle between r and F (degrees here; must convert to radians for JS trig)
+    //
+    // Direction / sign:
+    //   By common AP Physics convention, counterclockwise torque is positive (+),
+    //   clockwise torque is negative (−).
+    //
+    // IMPORTANT: From only r, F, and θ (with θ entered as 0–180°),
+    // sin(θ) is nonnegative, so τ computed from magnitudes is nonnegative.
+    // To get a *signed* torque, you must include direction information.
+    //
+    // Simple, student-friendly approach used here:
+    //   - The user may enter Force as positive or negative to encode direction.
+    //   - We treat the sign of F as the torque sign (CCW = +, CW = −),
+    //     while the size uses |F| and sin(θ).
+    //
+    // Optional rotational dynamics:
+    //   α = τ / I  (angular acceleration, rad/s^2)
+    // where I is the moment of inertia about the same pivot axis.
+
+    const $ = (id) => document.getElementById(id);
+
+    const forceEl = $("force");
+    const leverEl = $("lever");
+    const angleEl = $("angle");
+    const inertiaEl = $("inertia");
+
+    const outputEl = $("output");
+    const msgEl = $("msg");
+    const btn = $("calcBtn");
+
+    // Format numbers cleanly for students (avoid huge floating noise).
+    function fmt(x) {
+      if (!isFinite(x)) return "—";
+      // 4 significant digits is usually enough for AP-style problems
+      // while still showing meaningful precision.
+      return Number.parseFloat(x.toPrecision(4)).toString();
+    }
+
+    function showMessage(text, isError=false) {
+      msgEl.style.display = "block";
+      msgEl.textContent = text;
+      msgEl.classList.toggle("error", isError);
+    }
+
+    function clearMessage() {
+      msgEl.style.display = "none";
+      msgEl.textContent = "";
+      msgEl.classList.remove("error");
+    }
+
+    function setOutputs(torqueText, dirText, alphaText) {
+      const boxes = outputEl.querySelectorAll(".kv .v");
+      boxes[0].textContent = torqueText;
+      boxes[1].textContent = dirText;
+      boxes[2].textContent = alphaText;
+    }
+
+    btn.addEventListener("click", () => {
+      clearMessage();
+
+      // Read input values as numbers.
+      const F = Number(forceEl.value);
+      const r = Number(leverEl.value);
+      const thetaDeg = Number(angleEl.value);
+
+      // Basic validation for required inputs.
+      if (!isFinite(F) || !isFinite(r) || !isFinite(thetaDeg)) {
+        setOutputs("—", "—", "—");
+        showMessage("Please enter valid numbers for Force, lever arm length, and angle.", true);
+        return;
+      }
+      if (r < 0) {
+        setOutputs("—", "—", "—");
+        showMessage("Lever arm length r should be nonnegative.", true);
+        return;
+      }
+
+      // Convert degrees to radians because Math.sin uses radians.
+      const thetaRad = thetaDeg * Math.PI / 180;
+
+      // Torque magnitude from τ = r * |F| * sin(θ)
+      // Signed torque uses the sign convention encoded in F.
+      const tauMag = r * Math.abs(F) * Math.sin(thetaRad);
+      const tau = Math.sign(F) * tauMag;
+
+      // Direction based on sign convention.
+      let direction = "Zero torque";
+      if (Math.abs(tau) > 0) {
+        direction = (tau > 0) ? "Counterclockwise (+)" : "Clockwise (−)";
+      }
+
+      // Optional angular acceleration if I is provided and valid.
+      let alphaText = "—";
+      const Iraw = inertiaEl.value.trim();
+      if (Iraw !== "") {
+        const I = Number(Iraw);
+        if (!isFinite(I) || I <= 0) {
+          alphaText = "—";
+          showMessage("Moment of inertia I must be a positive number if provided.", true);
+        } else {
+          // α = τ / I  (units: rad/s² because τ is N·m and I is kg·m²)
+          const alpha = tau / I;
+          alphaText = `${fmt(alpha)} rad/s²`;
+        }
+      }
+
+      // Display outputs with units.
+      const torqueText = `${fmt(tau)} N·m`;
+      setOutputs(torqueText, direction, alphaText);
+
+      // Helpful note when θ makes sin(θ) negative (e.g., user enters 210°)
+      // This isn't "wrong" mathematically, but students often define θ as 0–180°.
+      if (Math.sin(thetaRad) < 0) {
+        showMessage("Note: sin(θ) is negative for this angle. Many problems define θ between 0° and 180°.", false);
+      }
+    });
+  </script>
+</body>
+</html>
