@@ -1,6 +1,21 @@
-// Shared site JS
-// Intentionally minimal to keep the site lightweight and static.
-// Reserved for future non-tracking UI behavior if needed.
+// Minimal site-wide JS.
+// 1) Highlights the current nav link using aria-current="page".
+// No tracking, no external deps.
 
-// Example placeholder:
-// console.log("AP Tools site loaded");
+(function () {
+  const path = window.location.pathname.replace(/\/+$/, "") + "/"; // normalize trailing slash
+  const navLinks = document.querySelectorAll(".nav a[href]");
+
+  navLinks.forEach(a => {
+    const href = a.getAttribute("href");
+    if (!href) return;
+
+    // Normalize href the same way
+    const normalized = href.replace(/\/+$/, "") + "/";
+
+    // Mark current page
+    if (normalized === path) {
+      a.setAttribute("aria-current", "page");
+    }
+  });
+})();
