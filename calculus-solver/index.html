@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AP Calculus — Derivative & Integral (Lightweight)</title>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#111a2e; --text:#e9eefc; --muted:#b9c3e3;
+      --line:rgba(255,255,255,.12); --accent:#6ea8ff; --bad:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(1200px 600px at 30% -10%, rgba(110,168,255,0.25), transparent 60%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(126,224,129,0.18), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      line-height:1.35;
+    }
+    .wrap{max-width:900px;margin:0 auto;padding:18px}
+    header{padding:10px 0 14px}
+    h1{margin:0 0 6px;font-size:1.25rem;letter-spacing:.2px}
+    .sub{margin:0;color:var(--muted);font-size:.95rem}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media(min-width:860px){.grid{grid-template-columns:1fr 1fr;align-items:start}}
+    .card{
+      background:rgba(17,26,46,.82);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      backdrop-filter: blur(6px);
+    }
+    .card h2{margin:0 0 10px;font-size:1.05rem}
+    label{display:block;margin:10px 0 6px;color:var(--muted);font-size:.92rem}
+    input, select{
+      width:100%;
+      padding:11px 12px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.18);
+      color:var(--text);
+      font-size:1rem;
+      outline:none;
+    }
+    input:focus, select:focus{
+      border-color:rgba(110,168,255,.7);
+      box-shadow:0 0 0 3px rgba(110,168,255,.18);
+    }
+    button{
+      width:100%;
+      margin-top:14px;
+      padding:12px 14px;
+      border:none;border-radius:12px;
+      background:linear-gradient(135deg, rgba(110,168,255,.95), rgba(110,168,255,.75));
+      color:#061027;
+      font-weight:700;
+      font-size:1rem;
+      cursor:pointer;
+    }
+    button:active{transform:translateY(1px)}
+    .out{display:grid;gap:10px}
+    .kv{
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:12px;
+      background:rgba(0,0,0,.12);
+    }
+    .k{color:var(--muted);font-size:.9rem;margin-bottom:6px}
+    .v{
+      font-size:1.02rem;
+      font-weight:650;
+      word-break:break-word;
+      white-space:pre-wrap;
+    }
+    .msg{
+      margin-top:10px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:12px;
+      background:rgba(0,0,0,.12);
+      color:var(--muted);
+      font-size:.92rem;
+      display:none;
+    }
+    .msg.error{
+      display:block;
+      border-color:rgba(255,107,107,.55);
+      background:rgba(255,107,107,.10);
+      color:#ffd2d2;
+    }
+    .msg.ok{display:block}
+    .pill{
+      display:inline-block;
+      padding:4px 8px;
+      border-radius:999px;
+      font-size:.85rem;
+      border:1px solid var(--line);
+      color:var(--muted);
+      background:rgba(0,0,0,.10);
+    }
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Derivative & Integral Solver (Lightweight)</h1>
+      <p class="sub">
+        Supports <span class="pill">polynomials ≤ degree 3</span>, <span class="pill">axⁿ</span>,
+        <span class="pill">sin(ax)</span>, <span class="pill">cos(ax)</span>, <span class="pill">e^(ax)</span>
+      </p>
+    </header>
+
+    <div class="grid">
+      <!-- INPUTS -->
+      <section class="card" aria-label="Inputs">
+        <h2>Inputs</h2>
+
+        <label for="fn">Function f(x)</label>
+        <input id="fn" type="text" placeholder="Examples: 3x^2 - 4x + 1, sin(2x), e^(3x), 5x^3" />
+
+        <label for="op">Operation</label>
+        <select id="op">
+          <option value="derivative">Derivative d/dx</option>
+          <option value="integral">Indefinite integral ∫ f(x) dx</option>
+        </select>
+
+        <label class="pill" style="display:inline-flex; gap:8px; align-items:center; margin-top:12px;">
+          <input id="steps" type="checkbox" style="width:auto" />
+          Show short steps
+        </label>
+
+        <button id="calcBtn" type="button">Calculate</button>
+        <div id="msg" class="msg"></div>
+
+        <p class="sub" style="margin-top:10px">
+          Formatting rules: use <code>x^n</code> for powers, optional spaces, and only the supported forms.
+        </p>
+      </section>
+
+      <!-- OUTPUTS -->
+      <section class="card" aria-label="Outputs">
+        <h2>Output</h2>
+        <div class="out">
+          <div class="kv">
+            <div class="k">Result</div>
+            <div id="result" class="v">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Rule used</div>
+            <div id="rule" class="v">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Steps (optional)</div>
+            <div id="stepOut" class="v">—</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================================
+    // Lightweight AP Calc Differentiation/Integration (Regex-based)
+    // ==========================================================
+    // Narrow scope by design. We support:
+    //   1) Single-term power form: a x^n  (also a x, x^n, x, constants)
+    //   2) sin(a x), cos(a x)
+    //   3) e^(a x)
+    //   4) Polynomials up to degree 3 (sum of terms)
+    //
+    // We do NOT support: products of non-constants, quotients, ln, tan,
+    // nested functions, arbitrary parentheses, or general simplification.
+    //
+    // Output style:
+    //   - Result as a clean-ish expression string
+    //   - Rule used (power rule, chain rule, etc.)
+    //   - Optional short steps
+    //
+    // Key math rules used:
+    //   Power rule (derivative): d/dx [a x^n] = a*n*x^(n-1)
+    //   Power rule (integral):   ∫ a x^n dx = a/(n+1) * x^(n+1) + C (n != -1)
+    //   Constant rule: d/dx[c]=0; ∫c dx = c x + C
+    //   sin chain: d/dx[sin(ax)] = a cos(ax)
+    //   cos chain: d/dx[cos(ax)] = -a sin(ax)
+    //   exp chain: d/dx[e^(ax)]  = a e^(ax)
+    //   sin integral: ∫ sin(ax) dx = -(1/a) cos(ax) + C
+    //   cos integral: ∫ cos(ax) dx = (1/a) sin(ax) + C
+    //   exp integral: ∫ e^(ax) dx  = (1/a) e^(ax) + C
+    //
+    // Parsing approach:
+    //   - Detect trig/exp special forms first (whole expression must match).
+    //   - Else, parse as polynomial sum of terms (<= degree 3).
+    //     Each term is parsed into coefficient and exponent.
+    //
+    // Note: This is for quick confirmation, not full symbolic algebra.
+
+    const $ = (id) => document.getElementById(id);
+    const fnEl = $("fn");
+    const opEl = $("op");
+    const stepsEl = $("steps");
+    const btn = $("calcBtn");
+    const msgEl = $("msg");
+    const resultEl = $("result");
+    const ruleEl = $("rule");
+    const stepOutEl = $("stepOut");
+
+    function showMsg(text, kind) {
+      msgEl.className = "msg " + (kind || "ok");
+      msgEl.textContent = text;
+      msgEl.style.display = "block";
+    }
+    function clearMsg() {
+      msgEl.className = "msg";
+      msgEl.textContent = "";
+      msgEl.style.display = "none";
+    }
+
+    // ---------- Formatting helpers ----------
+    function isInt(n){ return Number.isFinite(n) && Math.abs(n - Math.round(n)) < 1e-10; }
+
+    function numToStr(n) {
+      // Keep fractions as decimals if needed (simple)
+      if (!Number.isFinite(n)) return "NaN";
+      // Clean tiny -0
+      if (Math.abs(n) < 1e-12) n = 0;
+      if (isInt(n)) return String(Math.round(n));
+      // 6 sig figs is enough for this narrow tool
+      return Number.parseFloat(n.toPrecision(6)).toString();
+    }
+
+    function termToStr(coef, exp) {
+      // Convert a single a*x^n term into a readable string.
+      // Handles constants (exp=0), x (exp=1), and x^n.
+      if (Math.abs(coef) < 1e-12) return ""; // omit zero term
+
+      const sign = coef < 0 ? "-" : "+";
+      const a = Math.abs(coef);
+
+      let core = "";
+      if (exp === 0) {
+        core = numToStr(a);
+      } else if (exp === 1) {
+        if (Math.abs(a - 1) < 1e-12) core = "x";
+        else core = `${numToStr(a)}x`;
+      } else {
+        if (Math.abs(a - 1) < 1e-12) core = `x^${exp}`;
+        else core = `${numToStr(a)}x^${exp}`;
+      }
+      return { sign, core };
+    }
+
+    function joinTerms(terms) {
+      // terms: array of {coef, exp} sorted by exp desc
+      const parts = [];
+      for (const t of terms) {
+        const out = termToStr(t.coef, t.exp);
+        if (!out) continue;
+        if (parts.length === 0) {
+          // first term: keep leading minus if needed, otherwise no +
+          parts.push(out.sign === "-" ? `-${out.core}` : out.core);
+        } else {
+          parts.push(`${out.sign} ${out.core}`);
+        }
+      }
+      return parts.length ? parts.join(" ") : "0";
+    }
+
+    // ---------- Regex-based parsers ----------
+    function normalize(s) {
+      return s.replace(/\s+/g, "").toLowerCase();
+    }
+
+    function parseA(s) {
+      // Parse coefficient a from "", "+", "-", "3", "-2.5"
+      // Returns number or NaN.
+      if (s === "" || s === "+") return 1;
+      if (s === "-") return -1;
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function parseAxInside(s) {
+      // Parse "ax" where a can be omitted: "x", "-x", "2x", "-3.5x"
+      // Returns a or NaN.
+      // s expected like "2x" or "-x"
+      const m = s.match(/^([+\-]?\d*\.?\d*)x$/);
+      if (!m) return NaN;
+      return parseA(m[1]);
+    }
+
+    function parseTrigOrExp(expr) {
+      // Whole-expression matches only.
+      // sin(ax), cos(ax), e^(ax) where ax is like x, -x, 2x, -3x
+      let m;
+
+      m = expr.match(/^sin\(([^)]+)\)$/);
+      if (m) {
+        const a = parseAxInside(m[1]);
+        if (!Number.isFinite(a)) return null;
+        return { type:"sin", a };
+      }
+
+      m = expr.match(/^cos\(([^)]+)\)$/);
+      if (m) {
+        const a = parseAxInside(m[1]);
+        if (!Number.isFinite(a)) return null;
+        return { type:"cos", a };
+      }
+
+      m = expr.match(/^e\^\(([^)]+)\)$/);
+      if (m) {
+        const a = parseAxInside(m[1]);
+        if (!Number.isFinite(a)) return null;
+        return { type:"exp", a };
+      }
+
+      return null;
+    }
+
+    function parsePoly(expr) {
+      // Supports polynomials up to degree 3, like:
+      //   3x^2-4x+1
+      //   -x^3+2x-7
+      //   x^2
+      //   5
+      //
+      // Implementation:
+      //   Split into signed terms by turning "-" into "+-".
+      //   Then parse each term as:
+      //     a x^n
+      //     a x
+      //     a
+      //     x^n
+      //     x
+      //
+      // Returns array of {coef, exp} combined by exp, or null if invalid/unsupported.
+      if (expr === "") return null;
+
+      // Allow leading minus by standardizing: "a-b" -> "a+-b"
+      const standardized = expr.replace(/-/g, "+-");
+      const rawTerms = standardized.split("+").filter(t => t !== "");
+
+      const map = new Map(); // exp -> coef
+
+      for (const term of rawTerms) {
+        let coef, exp;
+
+        // x^n with optional coefficient: "3x^2", "-x^3", "x^2"
+        let m = term.match(/^([+\-]?\d*\.?\d*)x\^([0-3])$/);
+        if (m) {
+          coef = parseA(m[1]);
+          exp = Number(m[2]);
+        } else {
+          // x (power 1): "3x", "-x", "x"
+          m = term.match(/^([+\-]?\d*\.?\d*)x$/);
+          if (m) {
+            coef = parseA(m[1]);
+            exp = 1;
+          } else {
+            // constant: "5", "-2.5"
+            m = term.match(/^([+\-]?\d*\.?\d+)$/);
+            if (m) {
+              coef = Number(m[1]);
+              exp = 0;
+            } else {
+              return null; // unsupported term
+            }
+          }
+        }
+
+        if (!Number.isFinite(coef)) return null;
+        if (exp < 0 || exp > 3) return null; // degree cap
+
+        map.set(exp, (map.get(exp) || 0) + coef);
+      }
+
+      // Build sorted terms
+      const terms = Array.from(map.entries())
+        .map(([exp, coef]) => ({ exp, coef }))
+        .filter(t => Math.abs(t.coef) > 1e-12)
+        .sort((a,b) => b.exp - a.exp);
+
+      // If all canceled, return 0 polynomial
+      return terms.length ? terms : [{coef:0, exp:0}];
+    }
+
+    // ---------- Compute derivative/integral ----------
+    function derivePoly(terms) {
+      const out = [];
+      const steps = [];
+
+      for (const t of terms) {
+        const {coef:a, exp:n} = t;
+
+        if (n === 0) {
+          steps.push(`d/dx(${numToStr(a)}) = 0 (constant rule)`);
+          continue;
+        }
+
+        const newCoef = a * n;
+        const newExp = n - 1;
+        steps.push(`d/dx(${numToStr(a)}x^${n}) = ${numToStr(a)}·${n}·x^${n-1} = ${numToStr(newCoef)}x^${newExp}`);
+
+        out.push({coef:newCoef, exp:newExp});
+      }
+
+      // Combine like terms (same exponent)
+      const map = new Map();
+      for (const t of out) map.set(t.exp, (map.get(t.exp) || 0) + t.coef);
+      const combined = Array.from(map.entries())
+        .map(([exp, coef]) => ({exp, coef}))
+        .filter(t => Math.abs(t.coef) > 1e-12)
+        .sort((a,b)=>b.exp-a.exp);
+
+      return { result: joinTerms(combined.length ? combined : [{coef:0,exp:0}]), steps };
+    }
+
+    function integratePoly(terms) {
+      const out = [];
+      const steps = [];
+
+      for (const t of terms) {
+        const {coef:a, exp:n} = t;
+
+        if (n === 0) {
+          // ∫ a dx = a x + C
+          steps.push(`∫ ${numToStr(a)} dx = ${numToStr(a)}x + C (constant rule)`);
+          out.push({coef:a, exp:1});
+          continue;
+        }
+
+        // ∫ a x^n dx = a/(n+1) x^(n+1) + C  (n != -1; we never allow -1 here)
+        const newExp = n + 1;
+        const newCoef = a / (n + 1);
+        steps.push(`∫ ${numToStr(a)}x^${n} dx = ${numToStr(a)}/(${n+1}) · x^${n+1} = ${numToStr(newCoef)}x^${newExp}`);
+        out.push({coef:newCoef, exp:newExp});
+      }
+
+      // Combine like terms
+      const map = new Map();
+      for (const t of out) map.set(t.exp, (map.get(t.exp) || 0) + t.coef);
+      const combined = Array.from(map.entries())
+        .map(([exp, coef]) => ({exp, coef}))
+        .filter(t => Math.abs(t.coef) > 1e-12)
+        .sort((a,b)=>b.exp-a.exp);
+
+      return { result: joinTerms(combined) + " + C", steps };
+    }
+
+    function deriveTrigExp(node) {
+      const a = node.a;
+
+      if (node.type === "sin") {
+        // d/dx sin(ax) = a cos(ax)
+        const coefStr = Math.abs(a - 1) < 1e-12 ? "" : numToStr(a);
+        const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
+        return {
+          result: `${coefStr}${coefStr!=="" ? "" : ""}cos(${inner})`.replace(/^cos/, "cos"),
+          rule: "Chain rule (sin)",
+          steps: [`d/dx[sin(${inner})] = cos(${inner}) · d/dx(${inner}) = cos(${inner}) · ${numToStr(a)} = ${numToStr(a)}cos(${inner})`]
+        };
+      }
+
+      if (node.type === "cos") {
+        // d/dx cos(ax) = -a sin(ax)
+        const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
+        const coef = -a;
+        return {
+          result: `${numToStr(coef)}sin(${inner})`,
+          rule: "Chain rule (cos)",
+          steps: [`d/dx[cos(${inner})] = -sin(${inner}) · d/dx(${inner}) = -sin(${inner}) · ${numToStr(a)} = ${numToStr(-a)}sin(${inner})`]
+        };
+      }
+
+      if (node.type === "exp") {
+        // d/dx e^(ax) = a e^(ax)
+        const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
+        return {
+          result: `${numToStr(a)}e^(${inner})`,
+          rule: "Chain rule (exponential)",
+          steps: [`d/dx[e^(${inner})] = e^(${inner}) · d/dx(${inner}) = e^(${inner}) · ${numToStr(a)} = ${numToStr(a)}e^(${inner})`]
+        };
+      }
+
+      return null;
+    }
+
+    function integrateTrigExp(node) {
+      const a = node.a;
+
+      // For integrals, a must be nonzero to use the 1/a forms.
+      if (Math.abs(a) < 1e-12) {
+        return { error: "For sin(ax), cos(ax), or e^(ax), the inner 'ax' must have a ≠ 0." };
+      }
+
+      const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
+
+      if (node.type === "sin") {
+        // ∫ sin(ax) dx = -(1/a) cos(ax) + C
+        const coef = -1 / a;
+        return {
+          result: `${numToStr(coef)}cos(${inner}) + C`,
+          rule: "Reverse chain rule (sin)",
+          steps: [`∫ sin(${inner}) dx = -(1/${numToStr(a)})cos(${inner}) + C = ${numToStr(coef)}cos(${inner}) + C`]
+        };
+      }
+
+      if (node.type === "cos") {
+        // ∫ cos(ax) dx = (1/a) sin(ax) + C
+        const coef = 1 / a;
+        return {
+          result: `${numToStr(coef)}sin(${inner}) + C`,
+          rule: "Reverse chain rule (cos)",
+          steps: [`∫ cos(${inner}) dx = (1/${numToStr(a)})sin(${inner}) + C = ${numToStr(coef)}sin(${inner}) + C`]
+        };
+      }
+
+      if (node.type === "exp") {
+        // ∫ e^(ax) dx = (1/a) e^(ax) + C
+        const coef = 1 / a;
+        return {
+          result: `${numToStr(coef)}e^(${inner}) + C`,
+          rule: "Reverse chain rule (exponential)",
+          steps: [`∫ e^(${inner}) dx = (1/${numToStr(a)})e^(${inner}) + C = ${numToStr(coef)}e^(${inner}) + C`]
+        };
+      }
+
+      return null;
+    }
+
+    function unsupported() {
+      return "Unsupported input. Try: 3x^2-4x+1, 5x^3, sin(2x), cos(-3x), e^(4x).";
+    }
+
+    btn.addEventListener("click", () => {
+      clearMsg();
+
+      const raw = fnEl.value;
+      const op = opEl.value;
+      const wantSteps = stepsEl.checked;
+
+      const expr = normalize(raw);
+
+      if (!expr) {
+        showMsg("Enter a function f(x).", "error");
+        resultEl.textContent = "—";
+        ruleEl.textContent = "—";
+        stepOutEl.textContent = "—";
+        return;
+      }
+
+      // 1) Try trig/exp whole-expression parse
+      const special = parseTrigOrExp(expr);
+      if (special) {
+        if (op === "derivative") {
+          const out = deriveTrigExp(special);
+          resultEl.textContent = out.result;
+          ruleEl.textContent = out.rule;
+          stepOutEl.textContent = wantSteps ? out.steps.join("\n") : "—";
+          return;
+        } else {
+          const out = integrateTrigExp(special);
+          if (out.error) {
+            showMsg(out.error, "error");
+            resultEl.textContent = "—";
+            ruleEl.textContent = "—";
+            stepOutEl.textContent = "—";
+            return;
+          }
+          resultEl.textContent = out.result;
+          ruleEl.textContent = out.rule;
+          stepOutEl.textContent = wantSteps ? out.steps.join("\n") : "—";
+          return;
+        }
+      }
+
+      // 2) Try polynomial parse (sum of terms) up to degree 3
+      const poly = parsePoly(expr);
+      if (!poly) {
+        showMsg(unsupported(), "error");
+        resultEl.textContent = "—";
+        ruleEl.textContent = "—";
+        stepOutEl.textContent = "—";
+        return;
+      }
+
+      if (op === "derivative") {
+        const out = derivePoly(poly);
+        resultEl.textContent = out.result;
+        ruleEl.textContent = "Power rule + constant rule (term-by-term)";
+        stepOutEl.textContent = wantSteps ? out.steps.join("\n") : "—";
+      } else {
+        // Note: We intentionally do not support x^-1 (ln|x|) since degree <=3 nonnegative only.
+        const out = integratePoly(poly);
+        resultEl.textContent = out.result;
+        ruleEl.textContent = "Power rule (integrals) + constant rule (term-by-term)";
+        stepOutEl.textContent = wantSteps ? out.steps.join("\n") : "—";
+      }
+    });
+  </script>
+</body>
+</html>
