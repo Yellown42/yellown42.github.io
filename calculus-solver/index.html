@@ -22,7 +22,7 @@
       </div>
     </nav>
     <!-- NAV ENDS HERE -->
-    
+
     <header>
       <h1>Derivative & Integral Solver (Lightweight)</h1>
       <p class="sub">
@@ -39,7 +39,20 @@
         <label for="fn">Function f(x)</label>
         <input id="fn" type="text" placeholder="Examples: 3x^2 - 4x + 1, sin(2x), e^(3x), 5x^3" />
 
-        <label for="op">Operation</label>
+        <!-- Clickable examples -->
+        <div class="sub" style="margin-top:8px; line-height:1.45">
+          Examples (click to fill):
+          <div id="examples" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
+            <button type="button" class="pill ex" data-ex="3x^2 - 4x + 1">3x^2 − 4x + 1</button>
+            <button type="button" class="pill ex" data-ex="5x^3">5x^3</button>
+            <button type="button" class="pill ex" data-ex="-x^3 + 2x - 7">−x^3 + 2x − 7</button>
+            <button type="button" class="pill ex" data-ex="sin(2x)">sin(2x)</button>
+            <button type="button" class="pill ex" data-ex="cos(-3x)">cos(−3x)</button>
+            <button type="button" class="pill ex" data-ex="e^(4x)">e^(4x)</button>
+          </div>
+        </div>
+
+        <label for="op" style="margin-top:12px;">Operation</label>
         <select id="op">
           <option value="derivative">Derivative d/dx</option>
           <option value="integral">Indefinite integral ∫ f(x) dx</option>
@@ -53,8 +66,31 @@
         <button id="calcBtn" type="button">Calculate</button>
         <div id="msg" class="msg"></div>
 
+        <!-- Supported formats (explicit + student-friendly) -->
+        <details style="margin-top:12px;">
+          <summary class="sub" style="cursor:pointer;">Supported formats (with examples)</summary>
+          <div class="sub" style="margin-top:8px; line-height:1.55">
+            <div><strong>Polynomials (degree 0–3)</strong></div>
+            <div>• <code>3x^2 - 4x + 1</code></div>
+            <div>• <code>-x^3 + 2x - 7</code></div>
+            <div>• <code>x</code>, <code>x^2</code>, <code>5</code></div>
+
+            <div style="margin-top:10px;"><strong>Trig (whole expression must match)</strong></div>
+            <div>• <code>sin(2x)</code>, <code>cos(-3x)</code>, <code>sin(x)</code></div>
+
+            <div style="margin-top:10px;"><strong>Exponential (whole expression must match)</strong></div>
+            <div>• <code>e^(4x)</code>, <code>e^(x)</code>, <code>e^(-2x)</code></div>
+
+            <div style="margin-top:10px;"><strong>What is NOT supported</strong></div>
+            <div>• Products like <code>(x+1)(x-2)</code> or <code>x·sin(x)</code></div>
+            <div>• Quotients like <code>(x^2+1)/(x-1)</code></div>
+            <div>• <code>ln(x)</code>, <code>tan(x)</code>, nested functions like <code>sin(x^2)</code></div>
+            <div>• General parentheses/simplification (this is not a CAS)</div>
+          </div>
+        </details>
+
         <p class="sub" style="margin-top:10px">
-          Formatting rules: use <code>x^n</code> for powers, optional spaces, and only the supported forms.
+          Formatting tips: use <code>x^n</code> for powers. Spaces are okay. Unicode minus signs and “x²/x³” are normalized automatically.
         </p>
       </section>
 
@@ -62,6 +98,10 @@
       <section class="card" aria-label="Outputs">
         <h2>Output</h2>
         <div class="out">
+          <div class="kv">
+            <div class="k">Normalized input</div>
+            <div id="normOut" class="v">—</div>
+          </div>
           <div class="kv">
             <div class="k">Result</div>
             <div id="result" class="v">—</div>
@@ -92,10 +132,10 @@
     // We do NOT support: products of non-constants, quotients, ln, tan,
     // nested functions, arbitrary parentheses, or general simplification.
     //
-    // Output style:
-    //   - Result as a clean-ish expression string
-    //   - Rule used (power rule, chain rule, etc.)
-    //   - Optional short steps
+    // Key UX upgrades:
+    //   - Clickable examples below the function field
+    //   - Stronger normalization of user input to reduce "formatting" errors
+    //   - Clear supported-format list (keeps it narrow; not a CAS)
     //
     // Key math rules used:
     //   Power rule (derivative): d/dx [a x^n] = a*n*x^(n-1)
@@ -107,13 +147,6 @@
     //   sin integral: ∫ sin(ax) dx = -(1/a) cos(ax) + C
     //   cos integral: ∫ cos(ax) dx = (1/a) sin(ax) + C
     //   exp integral: ∫ e^(ax) dx  = (1/a) e^(ax) + C
-    //
-    // Parsing approach:
-    //   - Detect trig/exp special forms first (whole expression must match).
-    //   - Else, parse as polynomial sum of terms (<= degree 3).
-    //     Each term is parsed into coefficient and exponent.
-    //
-    // Note: This is for quick confirmation, not full symbolic algebra.
 
     const $ = (id) => document.getElementById(id);
     const fnEl = $("fn");
@@ -121,9 +154,21 @@
     const stepsEl = $("steps");
     const btn = $("calcBtn");
     const msgEl = $("msg");
+    const normOutEl = $("normOut");
     const resultEl = $("result");
     const ruleEl = $("rule");
     const stepOutEl = $("stepOut");
+
+    // Example buttons: insert example and run normalization preview
+    document.getElementById("examples").addEventListener("click", (e) => {
+      const b = e.target.closest("button.ex");
+      if (!b) return;
+      fnEl.value = b.dataset.ex || "";
+      fnEl.focus();
+      // Optional: auto-run? keep lightweight: just preview normalized form
+      const { normalized } = normalizeInput(fnEl.value);
+      normOutEl.textContent = normalized || "—";
+    });
 
     function showMsg(text, kind) {
       msgEl.className = "msg " + (kind || "ok");
@@ -140,20 +185,14 @@
     function isInt(n){ return Number.isFinite(n) && Math.abs(n - Math.round(n)) < 1e-10; }
 
     function numToStr(n) {
-      // Keep fractions as decimals if needed (simple)
       if (!Number.isFinite(n)) return "NaN";
-      // Clean tiny -0
-      if (Math.abs(n) < 1e-12) n = 0;
+      if (Math.abs(n) < 1e-12) n = 0; // clean tiny -0
       if (isInt(n)) return String(Math.round(n));
-      // 6 sig figs is enough for this narrow tool
       return Number.parseFloat(n.toPrecision(6)).toString();
     }
 
     function termToStr(coef, exp) {
-      // Convert a single a*x^n term into a readable string.
-      // Handles constants (exp=0), x (exp=1), and x^n.
       if (Math.abs(coef) < 1e-12) return ""; // omit zero term
-
       const sign = coef < 0 ? "-" : "+";
       const a = Math.abs(coef);
 
@@ -161,23 +200,19 @@
       if (exp === 0) {
         core = numToStr(a);
       } else if (exp === 1) {
-        if (Math.abs(a - 1) < 1e-12) core = "x";
-        else core = `${numToStr(a)}x`;
+        core = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
       } else {
-        if (Math.abs(a - 1) < 1e-12) core = `x^${exp}`;
-        else core = `${numToStr(a)}x^${exp}`;
+        core = (Math.abs(a - 1) < 1e-12) ? `x^${exp}` : `${numToStr(a)}x^${exp}`;
       }
       return { sign, core };
     }
 
     function joinTerms(terms) {
-      // terms: array of {coef, exp} sorted by exp desc
       const parts = [];
       for (const t of terms) {
         const out = termToStr(t.coef, t.exp);
         if (!out) continue;
         if (parts.length === 0) {
-          // first term: keep leading minus if needed, otherwise no +
           parts.push(out.sign === "-" ? `-${out.core}` : out.core);
         } else {
           parts.push(`${out.sign} ${out.core}`);
@@ -186,14 +221,69 @@
       return parts.length ? parts.join(" ") : "0";
     }
 
-    // ---------- Regex-based parsers ----------
-    function normalize(s) {
-      return s.replace(/\s+/g, "").toLowerCase();
+    // ==========================================================
+    // Normalization logic (UX)
+    // ==========================================================
+    // We keep parsing regex-based, but we normalize common student input issues:
+    //   1) Trim leading/trailing spaces
+    //   2) Convert Unicode minus variants (−, –) to "-"
+    //   3) Convert Unicode superscripts: x² -> x^2, x³ -> x^3
+    //   4) Normalize exponent symbol: "x**2" -> "x^2"
+    //   5) Remove all remaining spaces (parser expects compact)
+    //   6) Lowercase everything (Sin -> sin, E^(...) -> e^(...))
+    //   7) Normalize "e^(...)" variants: "e^(" and "e^" with parentheses are supported;
+    //      we do NOT attempt to rewrite "exp(...)" or "e^{...}" to keep scope narrow.
+    //
+    // Return both:
+    //   - normalized: string used for parsing
+    //   - notes: small list of what was changed (optional)
+
+    function normalizeInput(raw) {
+      if (raw == null) return { normalized: "", notes: [] };
+
+      let s = String(raw);
+      const notes = [];
+
+      const beforeTrim = s;
+      s = s.trim();
+      if (s !== beforeTrim) notes.push("trimmed spaces");
+
+      // normalize common minus characters to "-"
+      const beforeMinus = s;
+      s = s.replace(/[−–—]/g, "-");
+      if (s !== beforeMinus) notes.push("normalized minus sign");
+
+      // normalize unicode superscripts commonly typed: ² ³
+      // We only support degree up to 3 anyway.
+      const beforeSup = s;
+      s = s.replace(/x²/gi, "x^2").replace(/x³/gi, "x^3");
+      if (s !== beforeSup) notes.push("converted x²/x³ to x^2/x^3");
+
+      // normalize ** to ^
+      const beforePow = s;
+      s = s.replace(/\*\*/g, "^");
+      if (s !== beforePow) notes.push("converted ** to ^");
+
+      // remove spaces/tabs inside (parser works on compact string)
+      const beforeWS = s;
+      s = s.replace(/\s+/g, "");
+      if (s !== beforeWS) notes.push("removed inner whitespace");
+
+      // lowercase for matching sin/cos/e
+      const beforeCase = s;
+      s = s.toLowerCase();
+      if (s !== beforeCase) notes.push("lowercased function names");
+
+      // normalize "+-" occurrences that can appear from copy/paste "x + -2"
+      const beforePM = s;
+      s = s.replace(/\+\-/g, "-");
+      if (s !== beforePM) notes.push("normalized '+-' to '-'");
+
+      return { normalized: s, notes };
     }
 
+    // ---------- Regex-based parsers ----------
     function parseA(s) {
-      // Parse coefficient a from "", "+", "-", "3", "-2.5"
-      // Returns number or NaN.
       if (s === "" || s === "+") return 1;
       if (s === "-") return -1;
       const n = Number(s);
@@ -202,8 +292,6 @@
 
     function parseAxInside(s) {
       // Parse "ax" where a can be omitted: "x", "-x", "2x", "-3.5x"
-      // Returns a or NaN.
-      // s expected like "2x" or "-x"
       const m = s.match(/^([+\-]?\d*\.?\d*)x$/);
       if (!m) return NaN;
       return parseA(m[1]);
@@ -239,25 +327,12 @@
     }
 
     function parsePoly(expr) {
-      // Supports polynomials up to degree 3, like:
+      // Polynomials up to degree 3:
       //   3x^2-4x+1
       //   -x^3+2x-7
-      //   x^2
-      //   5
-      //
-      // Implementation:
-      //   Split into signed terms by turning "-" into "+-".
-      //   Then parse each term as:
-      //     a x^n
-      //     a x
-      //     a
-      //     x^n
-      //     x
-      //
-      // Returns array of {coef, exp} combined by exp, or null if invalid/unsupported.
+      //   x^2, 5, x
       if (expr === "") return null;
 
-      // Allow leading minus by standardizing: "a-b" -> "a+-b"
       const standardized = expr.replace(/-/g, "+-");
       const rawTerms = standardized.split("+").filter(t => t !== "");
 
@@ -266,42 +341,40 @@
       for (const term of rawTerms) {
         let coef, exp;
 
-        // x^n with optional coefficient: "3x^2", "-x^3", "x^2"
+        // x^n term (n = 0..3)
         let m = term.match(/^([+\-]?\d*\.?\d*)x\^([0-3])$/);
         if (m) {
           coef = parseA(m[1]);
           exp = Number(m[2]);
         } else {
-          // x (power 1): "3x", "-x", "x"
+          // x term
           m = term.match(/^([+\-]?\d*\.?\d*)x$/);
           if (m) {
             coef = parseA(m[1]);
             exp = 1;
           } else {
-            // constant: "5", "-2.5"
+            // constant
             m = term.match(/^([+\-]?\d*\.?\d+)$/);
             if (m) {
               coef = Number(m[1]);
               exp = 0;
             } else {
-              return null; // unsupported term
+              return null;
             }
           }
         }
 
         if (!Number.isFinite(coef)) return null;
-        if (exp < 0 || exp > 3) return null; // degree cap
+        if (exp < 0 || exp > 3) return null;
 
         map.set(exp, (map.get(exp) || 0) + coef);
       }
 
-      // Build sorted terms
       const terms = Array.from(map.entries())
         .map(([exp, coef]) => ({ exp, coef }))
         .filter(t => Math.abs(t.coef) > 1e-12)
         .sort((a,b) => b.exp - a.exp);
 
-      // If all canceled, return 0 polynomial
       return terms.length ? terms : [{coef:0, exp:0}];
     }
 
@@ -312,20 +385,16 @@
 
       for (const t of terms) {
         const {coef:a, exp:n} = t;
-
         if (n === 0) {
           steps.push(`d/dx(${numToStr(a)}) = 0 (constant rule)`);
           continue;
         }
-
         const newCoef = a * n;
         const newExp = n - 1;
-        steps.push(`d/dx(${numToStr(a)}x^${n}) = ${numToStr(a)}·${n}·x^${n-1} = ${numToStr(newCoef)}x^${newExp}`);
-
+        steps.push(`d/dx(${numToStr(a)}x^${n}) = ${numToStr(a)}·${n}·x^${newExp} = ${numToStr(newCoef)}x^${newExp}`);
         out.push({coef:newCoef, exp:newExp});
       }
 
-      // Combine like terms (same exponent)
       const map = new Map();
       for (const t of out) map.set(t.exp, (map.get(t.exp) || 0) + t.coef);
       const combined = Array.from(map.entries())
@@ -344,20 +413,17 @@
         const {coef:a, exp:n} = t;
 
         if (n === 0) {
-          // ∫ a dx = a x + C
           steps.push(`∫ ${numToStr(a)} dx = ${numToStr(a)}x + C (constant rule)`);
           out.push({coef:a, exp:1});
           continue;
         }
 
-        // ∫ a x^n dx = a/(n+1) x^(n+1) + C  (n != -1; we never allow -1 here)
         const newExp = n + 1;
         const newCoef = a / (n + 1);
-        steps.push(`∫ ${numToStr(a)}x^${n} dx = ${numToStr(a)}/(${n+1}) · x^${n+1} = ${numToStr(newCoef)}x^${newExp}`);
+        steps.push(`∫ ${numToStr(a)}x^${n} dx = ${numToStr(a)}/(${n+1}) · x^${newExp} = ${numToStr(newCoef)}x^${newExp}`);
         out.push({coef:newCoef, exp:newExp});
       }
 
-      // Combine like terms
       const map = new Map();
       for (const t of out) map.set(t.exp, (map.get(t.exp) || 0) + t.coef);
       const combined = Array.from(map.entries())
@@ -370,36 +436,29 @@
 
     function deriveTrigExp(node) {
       const a = node.a;
+      const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
 
       if (node.type === "sin") {
-        // d/dx sin(ax) = a cos(ax)
-        const coefStr = Math.abs(a - 1) < 1e-12 ? "" : numToStr(a);
-        const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
         return {
-          result: `${coefStr}${coefStr!=="" ? "" : ""}cos(${inner})`.replace(/^cos/, "cos"),
+          result: `${numToStr(a)}cos(${inner})`,
           rule: "Chain rule (sin)",
-          steps: [`d/dx[sin(${inner})] = cos(${inner}) · d/dx(${inner}) = cos(${inner}) · ${numToStr(a)} = ${numToStr(a)}cos(${inner})`]
+          steps: [`d/dx[sin(${inner})] = cos(${inner})·d/dx(${inner}) = cos(${inner})·${numToStr(a)} = ${numToStr(a)}cos(${inner})`]
         };
       }
 
       if (node.type === "cos") {
-        // d/dx cos(ax) = -a sin(ax)
-        const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
-        const coef = -a;
         return {
-          result: `${numToStr(coef)}sin(${inner})`,
+          result: `${numToStr(-a)}sin(${inner})`,
           rule: "Chain rule (cos)",
-          steps: [`d/dx[cos(${inner})] = -sin(${inner}) · d/dx(${inner}) = -sin(${inner}) · ${numToStr(a)} = ${numToStr(-a)}sin(${inner})`]
+          steps: [`d/dx[cos(${inner})] = -sin(${inner})·d/dx(${inner}) = -sin(${inner})·${numToStr(a)} = ${numToStr(-a)}sin(${inner})`]
         };
       }
 
       if (node.type === "exp") {
-        // d/dx e^(ax) = a e^(ax)
-        const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
         return {
           result: `${numToStr(a)}e^(${inner})`,
           rule: "Chain rule (exponential)",
-          steps: [`d/dx[e^(${inner})] = e^(${inner}) · d/dx(${inner}) = e^(${inner}) · ${numToStr(a)} = ${numToStr(a)}e^(${inner})`]
+          steps: [`d/dx[e^(${inner})] = e^(${inner})·d/dx(${inner}) = e^(${inner})·${numToStr(a)} = ${numToStr(a)}e^(${inner})`]
         };
       }
 
@@ -408,8 +467,6 @@
 
     function integrateTrigExp(node) {
       const a = node.a;
-
-      // For integrals, a must be nonzero to use the 1/a forms.
       if (Math.abs(a) < 1e-12) {
         return { error: "For sin(ax), cos(ax), or e^(ax), the inner 'ax' must have a ≠ 0." };
       }
@@ -417,7 +474,6 @@
       const inner = (Math.abs(a - 1) < 1e-12) ? "x" : `${numToStr(a)}x`;
 
       if (node.type === "sin") {
-        // ∫ sin(ax) dx = -(1/a) cos(ax) + C
         const coef = -1 / a;
         return {
           result: `${numToStr(coef)}cos(${inner}) + C`,
@@ -427,7 +483,6 @@
       }
 
       if (node.type === "cos") {
-        // ∫ cos(ax) dx = (1/a) sin(ax) + C
         const coef = 1 / a;
         return {
           result: `${numToStr(coef)}sin(${inner}) + C`,
@@ -437,7 +492,6 @@
       }
 
       if (node.type === "exp") {
-        // ∫ e^(ax) dx = (1/a) e^(ax) + C
         const coef = 1 / a;
         return {
           result: `${numToStr(coef)}e^(${inner}) + C`,
@@ -460,7 +514,11 @@
       const op = opEl.value;
       const wantSteps = stepsEl.checked;
 
-      const expr = normalize(raw);
+      // Normalize (student-friendly) then parse using regex
+      const norm = normalizeInput(raw);
+      const expr = norm.normalized;
+
+      normOutEl.textContent = expr || "—";
 
       if (!expr) {
         showMsg("Enter a function f(x).", "error");
@@ -468,6 +526,11 @@
         ruleEl.textContent = "—";
         stepOutEl.textContent = "—";
         return;
+      }
+
+      // Optional gentle message about what changed
+      if (norm.notes.length) {
+        showMsg("Normalized input: " + norm.notes.join(", ") + ".", "ok");
       }
 
       // 1) Try trig/exp whole-expression parse
@@ -511,12 +574,17 @@
         ruleEl.textContent = "Power rule + constant rule (term-by-term)";
         stepOutEl.textContent = wantSteps ? out.steps.join("\n") : "—";
       } else {
-        // Note: We intentionally do not support x^-1 (ln|x|) since degree <=3 nonnegative only.
         const out = integratePoly(poly);
         resultEl.textContent = out.result;
         ruleEl.textContent = "Power rule (integrals) + constant rule (term-by-term)";
         stepOutEl.textContent = wantSteps ? out.steps.join("\n") : "—";
       }
+    });
+
+    // Live preview normalized input as user types (tiny usability win)
+    fnEl.addEventListener("input", () => {
+      const { normalized } = normalizeInput(fnEl.value);
+      normOutEl.textContent = normalized ? normalized : "—";
     });
   </script>
 </body>
