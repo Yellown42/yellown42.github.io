@@ -136,7 +136,7 @@
         </div>
 
         <p class="hint">
-          Notes: In 2D mode, <strong>time t is shared</strong> for x and y. The solver tries to compute missing values using standard constant-acceleration equations.
+          Notes: In 2D mode, <strong>time t is shared</strong> for x and y. The solver uses constant-acceleration (AP kinematics) equations and will report whether your inputs are uniquely solvable, multi-solution, or inconsistent.
         </p>
 
         <button id="calcBtn" type="button">Calculate</button>
@@ -148,6 +148,11 @@
         <h2>Results</h2>
 
         <div id="results" class="out">
+          <div class="kv">
+            <div class="k">Solution status</div>
+            <div id="statusBox" class="v">—</div>
+          </div>
+
           <div class="kv">
             <div class="k">Solved values</div>
             <div id="solvedBox" class="v">—</div>
@@ -168,37 +173,49 @@
   </div>
 
   <script>
-    // ============================
-    // AP Physics C Kinematics Solver
-    // ============================
-    // We assume constant acceleration.
+    // ==========================================
+    // AP Physics C Kinematics Solver (1D + 2D)
+    // ==========================================
+    // Goal:
+    //   Detect and clearly report:
+    //     ✅ uniquely solvable inputs
+    //     ⚠️ multiple solutions (e.g., quadratic time)
+    //     ❌ inconsistent inputs
+    //
+    // Constraints honored:
+    //   - Standard constant-acceleration kinematics equations only.
+    //   - No external libraries.
+    //   - All math client-side.
     //
     // Variables per axis:
     //   v0 = initial velocity
     //   v  = final velocity
     //   a  = acceleration
-    //   t  = time
-    //   x  = displacement (Δx)
+    //   t  = time (shared in 2D)
+    //   x  = displacement (Δx or Δy)
     //
-    // Core kinematics equations (per axis):
+    // Standard kinematics (per axis):
     //   (1) v  = v0 + a t
     //   (2) x  = v0 t + (1/2) a t^2
-    //   (3) x  = v t - (1/2) a t^2
+    //   (3) x  = v t  - (1/2) a t^2
     //   (4) v^2 = v0^2 + 2 a x
     //   (5) x  = ((v0 + v)/2) t
     //
-    // Strategy:
-    //   - Parse whatever the user provided (any 3 of the 5).
-    //   - Repeatedly apply equations to solve any unknown that is uniquely solvable.
-    //   - Some cases require solving a quadratic for time t.
-    //   - In 2D mode, solve x- and y- directions independently, but share the same time t.
-    //     If one axis finds t, we propagate it to the other axis.
+    // Key upgrade in this version:
+    //   We don't "pick a root" early.
+    //   Instead, we track a *set of candidate states* and branch whenever an equation
+    //   yields multiple valid solutions (quadratic or ± square root).
     //
-    // Robustness notes:
-    //   - If an equation yields two solutions (quadratic or square root), we choose a reasonable one:
-    //       * time: choose a positive root if possible
-    //       * velocity roots: choose root matching the sign of an already-known velocity if possible, else the + root
-    //   - After solving, we check consistency (do the equations agree?) within a tolerance.
+    // Final classification:
+    //   - If 0 consistent states -> ❌ inconsistent inputs
+    //   - If 1 consistent state  -> ✅ uniquely solvable
+    //   - If >1 consistent states -> ⚠️ multiple solutions (includes underdetermined/multi-root)
+    //
+    // Notes:
+    //   - We treat time solutions as valid if they are finite.
+    //   - By default, we display t >= 0 solutions; however if your inputs explicitly include
+    //     negative time, we allow it. (Physics-wise, usually t >= 0.)
+    //   - We deduplicate near-identical solutions using rounding/tolerance.
 
     const $ = (id) => document.getElementById(id);
 
@@ -208,6 +225,7 @@
     const btn = $("calcBtn");
     const msgEl = $("msg");
 
+    const statusBox = $("statusBox");
     const solvedBox = $("solvedBox");
     const eqBox = $("eqBox");
     const checkBox = $("checkBox");
@@ -228,12 +246,15 @@
       oneDBox.style.display = is2d ? "none" : "block";
       twoDBox.style.display = is2d ? "block" : "none";
       clearMsg();
+      statusBox.textContent = "—";
       solvedBox.textContent = "—";
       eqBox.textContent = "—";
       checkBox.textContent = "—";
     });
 
-    // Helpers
+    // -------------------------
+    // Numeric + formatting utils
+    // -------------------------
     function nOrNull(val) {
       const s = String(val ?? "").trim();
       if (s === "") return null;
@@ -243,215 +264,539 @@
 
     function fmt(x) {
       if (x === null || !Number.isFinite(x)) return "—";
-      return Number.parseFloat(x.toPrecision(5)).toString();
+      return Number.parseFloat(x.toPrecision(6)).toString();
     }
 
-    function closeEnough(a, b, tolAbs=1e-6, tolRel=1e-4) {
+    function closeEnough(a, b, tolAbs=1e-7, tolRel=1e-5) {
       const diff = Math.abs(a - b);
       const scale = Math.max(1, Math.abs(a), Math.abs(b));
       return diff <= tolAbs + tolRel * scale;
     }
 
-    function pickPositiveRoot(r1, r2) {
-      // Prefer positive times. If both positive, choose the smaller (often the "first event").
-      const cands = [r1, r2].filter(x => Number.isFinite(x) && x > 0);
-      if (cands.length === 0) return null;
-      return Math.min(...cands);
-    }
-
+    // Solve quadratic: A t^2 + B t + C = 0
+    // Returns [] if no real roots; [r] if linear; [r1, r2] if quadratic with real roots.
     function solveQuadratic(A, B, C) {
-      // Solve A t^2 + B t + C = 0
-      if (!Number.isFinite(A) || !Number.isFinite(B) || !Number.isFinite(C)) return null;
-      if (Math.abs(A) < 1e-12) { // linear
-        if (Math.abs(B) < 1e-12) return null;
+      if (!Number.isFinite(A) || !Number.isFinite(B) || !Number.isFinite(C)) return [];
+      if (Math.abs(A) < 1e-12) {
+        if (Math.abs(B) < 1e-12) return [];
         return [-C / B];
       }
       const D = B*B - 4*A*C;
-      if (D < -1e-12) return null;
-      const Dclamped = Math.max(0, D);
-      const sqrtD = Math.sqrt(Dclamped);
-      return [(-B + sqrtD) / (2*A), (-B - sqrtD) / (2*A)];
+      if (D < -1e-12) return [];
+      const Dc = Math.max(0, D);
+      const s = Math.sqrt(Dc);
+      return [(-B + s) / (2*A), (-B - s) / (2*A)];
     }
 
-    // Axis state container
-    function makeAxisState(v0, v, a, t, x) {
-      return { v0, v, a, t, x, used: [] };
+    // For ±sqrt(...) cases; returns [] if negative.
+    function plusMinusSqrt(val) {
+      if (!Number.isFinite(val)) return [];
+      if (val < -1e-12) return [];
+      const s = Math.sqrt(Math.max(0, val));
+      // If s is ~0, only one unique root
+      if (Math.abs(s) < 1e-12) return [0];
+      return [s, -s];
     }
 
-    // Try to solve one step; return true if we filled any new variable
-    function trySolveOnce(st) {
-      // Short names
-      const v0 = st.v0, v = st.v, a = st.a, t = st.t, x = st.x;
+    // -------------------------
+    // State representation
+    // -------------------------
+    // 1D state: { t, v0, v, a, x, used: Set<string> }
+    // 2D combined state: { t, xAxis:{...}, yAxis:{...}, used: Set<string> }
+    //
+    // We keep a "used" set for display (equations that contributed).
 
-      // Utility to set a field once and record equation
-      function setField(name, value, eq) {
-        if (st[name] === null && Number.isFinite(value)) {
-          st[name] = value;
-          st.used.push(eq);
-          return true;
-        }
-        return false;
-      }
-
-      // (1) v = v0 + a t
-      if (v === null && v0 !== null && a !== null && t !== null)
-        if (setField("v", v0 + a*t, "v = v₀ + a t")) return true;
-
-      if (v0 === null && v !== null && a !== null && t !== null)
-        if (setField("v0", v - a*t, "v₀ = v − a t")) return true;
-
-      if (a === null && v !== null && v0 !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("a", (v - v0)/t, "a = (v − v₀)/t")) return true;
-
-      if (t === null && v !== null && v0 !== null && a !== null && Math.abs(a) > 1e-12)
-        if (setField("t", (v - v0)/a, "t = (v − v₀)/a")) return true;
-
-      // (2) x = v0 t + 1/2 a t^2
-      if (x === null && v0 !== null && a !== null && t !== null)
-        if (setField("x", v0*t + 0.5*a*t*t, "Δx = v₀ t + ½ a t²")) return true;
-
-      if (v0 === null && x !== null && a !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("v0", (x - 0.5*a*t*t)/t, "v₀ = (Δx − ½ a t²)/t")) return true;
-
-      if (a === null && x !== null && v0 !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("a", 2*(x - v0*t)/(t*t), "a = 2(Δx − v₀ t)/t²")) return true;
-
-      // Solve (2) for time: ½ a t² + v0 t − x = 0
-      if (t === null && x !== null && v0 !== null && a !== null) {
-        const roots = solveQuadratic(0.5*a, v0, -x);
-        if (roots && roots.length) {
-          const tPick = roots.length === 1 ? roots[0] : pickPositiveRoot(roots[0], roots[1]);
-          if (tPick !== null && setField("t", tPick, "Solve: ½ a t² + v₀ t − Δx = 0")) return true;
-        }
-      }
-
-      // (3) x = v t − 1/2 a t^2
-      if (x === null && v !== null && a !== null && t !== null)
-        if (setField("x", v*t - 0.5*a*t*t, "Δx = v t − ½ a t²")) return true;
-
-      if (v === null && x !== null && a !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("v", (x + 0.5*a*t*t)/t, "v = (Δx + ½ a t²)/t")) return true;
-
-      if (a === null && x !== null && v !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("a", 2*(v*t - x)/(t*t), "a = 2(v t − Δx)/t²")) return true;
-
-      // Solve (3) for time: −½ a t² + v t − x = 0
-      if (t === null && x !== null && v !== null && a !== null) {
-        const roots = solveQuadratic(-0.5*a, v, -x);
-        if (roots && roots.length) {
-          const tPick = roots.length === 1 ? roots[0] : pickPositiveRoot(roots[0], roots[1]);
-          if (tPick !== null && setField("t", tPick, "Solve: −½ a t² + v t − Δx = 0")) return true;
-        }
-      }
-
-      // (4) v^2 = v0^2 + 2 a x
-      if (a === null && v !== null && v0 !== null && x !== null && Math.abs(x) > 1e-12)
-        if (setField("a", (v*v - v0*v0)/(2*x), "a = (v² − v₀²)/(2Δx)")) return true;
-
-      if (x === null && v !== null && v0 !== null && a !== null && Math.abs(a) > 1e-12)
-        if (setField("x", (v*v - v0*v0)/(2*a), "Δx = (v² − v₀²)/(2a)")) return true;
-
-      // Solve for v or v0 via square root (choose a reasonable sign)
-      if (v === null && v0 !== null && a !== null && x !== null) {
-        const inside = v0*v0 + 2*a*x;
-        if (inside >= -1e-10) {
-          const s = Math.sqrt(Math.max(0, inside));
-          // If v0 known, often v keeps same sign when a small; we pick sign matching v0 if possible, else +.
-          const vPick = (v0 < 0) ? -s : s;
-          if (setField("v", vPick, "v = ±√(v₀² + 2aΔx)")) return true;
-        }
-      }
-      if (v0 === null && v !== null && a !== null && x !== null) {
-        const inside = v*v - 2*a*x;
-        if (inside >= -1e-10) {
-          const s = Math.sqrt(Math.max(0, inside));
-          const v0Pick = (v < 0) ? -s : s;
-          if (setField("v0", v0Pick, "v₀ = ±√(v² − 2aΔx)")) return true;
-        }
-      }
-
-      // (5) x = ((v0 + v)/2) t
-      if (x === null && v0 !== null && v !== null && t !== null)
-        if (setField("x", 0.5*(v0 + v)*t, "Δx = ((v₀ + v)/2) t")) return true;
-
-      if (t === null && x !== null && v0 !== null && v !== null && Math.abs(v0+v) > 1e-12)
-        if (setField("t", 2*x/(v0 + v), "t = 2Δx/(v₀ + v)")) return true;
-
-      if (v === null && x !== null && v0 !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("v", 2*x/t - v0, "v = 2Δx/t − v₀")) return true;
-
-      if (v0 === null && x !== null && v !== null && t !== null && Math.abs(t) > 1e-12)
-        if (setField("v0", 2*x/t - v, "v₀ = 2Δx/t − v")) return true;
-
-      return false;
+    function makeAxis(v0, v, a, x) {
+      return { v0, v, a, x };
     }
 
-    function solveAxis(st, maxIters=30) {
-      // Repeatedly apply "single-step" solves until no progress.
-      let progressed = true;
-      let iter = 0;
-      while (progressed && iter < maxIters) {
-        progressed = trySolveOnce(st);
-        iter++;
+    function makeState1D(input) {
+      return {
+        t: input.t,
+        axis: makeAxis(input.v0, input.v, input.a, input.x),
+        used: new Set()
+      };
+    }
+
+    function makeState2D(input) {
+      return {
+        t: input.t,
+        xAxis: makeAxis(input.v0x, input.vx, input.ax, input.dx),
+        yAxis: makeAxis(input.v0y, input.vy, input.ay, input.dy),
+        used: new Set()
+      };
+    }
+
+    function cloneState1D(st) {
+      return {
+        t: st.t,
+        axis: { ...st.axis },
+        used: new Set(st.used)
+      };
+    }
+
+    function cloneState2D(st) {
+      return {
+        t: st.t,
+        xAxis: { ...st.xAxis },
+        yAxis: { ...st.yAxis },
+        used: new Set(st.used)
+      };
+    }
+
+    // ---------------------------------------
+    // Equation application (branching)
+    // ---------------------------------------
+    // For each state, try to generate new states by applying equations that can solve
+    // an unknown. If an equation yields multiple roots, we branch and produce multiple states.
+    //
+    // We do NOT change equations; we just solve them for unknowns.
+
+    function applyAxisEquations(states, axisKey) {
+      // axisKey: "axis" for 1D, or "xAxis"/"yAxis" for 2D
+      const out = [];
+
+      for (const st of states) {
+        const axis = st[axisKey];
+        const t = st.t;
+
+        // Helper to assign a value only if currently null
+        // Returns an array of new states (0, 1, or many)
+        function assign(field, values, eqLabel) {
+          const cur = axis[field];
+          // If already known, no branching, just keep current state
+          if (cur !== null) return [st];
+
+          // Filter finite numeric values and dedupe
+          const vals = values.filter(v => Number.isFinite(v));
+          const uniq = [];
+          for (const v of vals) {
+            if (!uniq.some(u => closeEnough(u, v))) uniq.push(v);
+          }
+          if (uniq.length === 0) return [st];
+
+          // Branch
+          const branched = [];
+          for (const v of uniq) {
+            // Clone correct type
+            const ns = (axisKey === "axis") ? cloneState1D(st) : cloneState2D(st);
+            ns[axisKey][field] = v;
+            ns.used.add(eqLabel);
+            branched.push(ns);
+          }
+          return branched;
+        }
+
+        // Helper to assign shared time if null
+        function assignT(values, eqLabel) {
+          if (st.t !== null) return [st];
+          const vals = values.filter(v => Number.isFinite(v));
+          const uniq = [];
+          for (const v of vals) {
+            if (!uniq.some(u => closeEnough(u, v))) uniq.push(v);
+          }
+          if (uniq.length === 0) return [st];
+          const branched = [];
+          for (const v of uniq) {
+            const ns = (axisKey === "axis") ? cloneState1D(st) : cloneState2D(st);
+            ns.t = v;
+            ns.used.add(eqLabel);
+            branched.push(ns);
+          }
+          return branched;
+        }
+
+        // We gather expansions from each equation; if none expand, keep st.
+        let expandedAny = false;
+        let frontier = [st];
+
+        // To avoid order-dependence, we apply a fixed set of "solvable forms"
+        // and expand the frontier step-by-step.
+
+        // (1) v = v0 + a t
+        // Solve for v, v0, a, t
+        {
+          const next = [];
+          for (const s0 of frontier) {
+            const ax0 = s0[axisKey];
+            const tt = s0.t;
+            const v0 = ax0.v0, v = ax0.v, a = ax0.a;
+
+            // v
+            if (v === null && v0 !== null && a !== null && tt !== null) {
+              const vVal = v0 + a*tt;
+              next.push(...(function(){ return assign.call({},{},[]); })()); // placeholder
+            }
+          }
+        }
+
+        // Instead of clever metaprogramming, do explicit expansions for clarity.
+        // We'll rebuild frontier repeatedly with controlled branching.
+
+        function expandWith(fn) {
+          const newFront = [];
+          let did = false;
+          for (const s of frontier) {
+            const res = fn(s);
+            if (res.length !== 1 || res[0] !== s) did = true;
+            newFront.push(...res);
+          }
+          frontier = newFront;
+          if (did) expandedAny = true;
+        }
+
+        // Equation (1): v = v0 + a t
+        expandWith((s) => {
+          const ax = s[axisKey];
+          const tt = s.t;
+          const v0 = ax.v0, v = ax.v, a = ax.a;
+
+          let res = [s];
+
+          if (ax.v === null && v0 !== null && a !== null && tt !== null) {
+            res = assignStateAxis(s, axisKey, "v", [v0 + a*tt], "v = v₀ + a t");
+            return res;
+          }
+          if (ax.v0 === null && v !== null && a !== null && tt !== null) {
+            return assignStateAxis(s, axisKey, "v0", [v - a*tt], "v₀ = v − a t");
+          }
+          if (ax.a === null && v !== null && v0 !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "a", [(v - v0)/tt], "a = (v − v₀)/t");
+          }
+          if (s.t === null && v !== null && v0 !== null && a !== null && Math.abs(a) > 1e-12) {
+            return assignStateT(s, axisKey, [(v - v0)/a], "t = (v − v₀)/a");
+          }
+          return [s];
+        });
+
+        // Equation (2): x = v0 t + 1/2 a t^2
+        expandWith((s) => {
+          const ax = s[axisKey];
+          const tt = s.t;
+          const v0 = ax.v0, a = ax.a, x = ax.x;
+
+          // solve x
+          if (ax.x === null && v0 !== null && a !== null && tt !== null) {
+            return assignStateAxis(s, axisKey, "x", [v0*tt + 0.5*a*tt*tt], "Δx = v₀ t + ½ a t²");
+          }
+          // solve v0
+          if (ax.v0 === null && x !== null && a !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "v0", [(x - 0.5*a*tt*tt)/tt], "v₀ = (Δx − ½ a t²)/t");
+          }
+          // solve a
+          if (ax.a === null && x !== null && v0 !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "a", [2*(x - v0*tt)/(tt*tt)], "a = 2(Δx − v₀ t)/t²");
+          }
+          // solve t (quadratic): ½ a t² + v0 t − x = 0
+          if (s.t === null && x !== null && v0 !== null && a !== null) {
+            const roots = solveQuadratic(0.5*a, v0, -x);
+            return assignStateT(s, axisKey, roots, "Solve: ½ a t² + v₀ t − Δx = 0");
+          }
+          return [s];
+        });
+
+        // Equation (3): x = v t − 1/2 a t^2
+        expandWith((s) => {
+          const ax = s[axisKey];
+          const tt = s.t;
+          const v = ax.v, a = ax.a, x = ax.x;
+
+          if (ax.x === null && v !== null && a !== null && tt !== null) {
+            return assignStateAxis(s, axisKey, "x", [v*tt - 0.5*a*tt*tt], "Δx = v t − ½ a t²");
+          }
+          if (ax.v === null && x !== null && a !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "v", [(x + 0.5*a*tt*tt)/tt], "v = (Δx + ½ a t²)/t");
+          }
+          if (ax.a === null && x !== null && v !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "a", [2*(v*tt - x)/(tt*tt)], "a = 2(v t − Δx)/t²");
+          }
+          // Solve t (quadratic): −½ a t² + v t − x = 0
+          if (s.t === null && x !== null && v !== null && a !== null) {
+            const roots = solveQuadratic(-0.5*a, v, -x);
+            return assignStateT(s, axisKey, roots, "Solve: −½ a t² + v t − Δx = 0");
+          }
+          return [s];
+        });
+
+        // Equation (4): v^2 = v0^2 + 2 a x
+        expandWith((s) => {
+          const ax = s[axisKey];
+          const v0 = ax.v0, v = ax.v, a = ax.a, x = ax.x;
+
+          if (ax.a === null && v !== null && v0 !== null && x !== null && Math.abs(x) > 1e-12) {
+            return assignStateAxis(s, axisKey, "a", [(v*v - v0*v0)/(2*x)], "a = (v² − v₀²)/(2Δx)");
+          }
+          if (ax.x === null && v !== null && v0 !== null && a !== null && Math.abs(a) > 1e-12) {
+            return assignStateAxis(s, axisKey, "x", [(v*v - v0*v0)/(2*a)], "Δx = (v² − v₀²)/(2a)");
+          }
+          if (ax.v === null && v0 !== null && a !== null && x !== null) {
+            const roots = plusMinusSqrt(v0*v0 + 2*a*x);
+            return assignStateAxis(s, axisKey, "v", roots, "v = ±√(v₀² + 2aΔx)");
+          }
+          if (ax.v0 === null && v !== null && a !== null && x !== null) {
+            const roots = plusMinusSqrt(v*v - 2*a*x);
+            return assignStateAxis(s, axisKey, "v0", roots, "v₀ = ±√(v² − 2aΔx)");
+          }
+          return [s];
+        });
+
+        // Equation (5): x = ((v0 + v)/2) t
+        expandWith((s) => {
+          const ax = s[axisKey];
+          const tt = s.t;
+          const v0 = ax.v0, v = ax.v, x = ax.x;
+
+          if (ax.x === null && v0 !== null && v !== null && tt !== null) {
+            return assignStateAxis(s, axisKey, "x", [0.5*(v0+v)*tt], "Δx = ((v₀ + v)/2) t");
+          }
+          if (s.t === null && x !== null && v0 !== null && v !== null && Math.abs(v0+v) > 1e-12) {
+            return assignStateT(s, axisKey, [2*x/(v0+v)], "t = 2Δx/(v₀ + v)");
+          }
+          if (ax.v === null && x !== null && v0 !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "v", [2*x/tt - v0], "v = 2Δx/t − v₀");
+          }
+          if (ax.v0 === null && x !== null && v !== null && tt !== null && Math.abs(tt) > 1e-12) {
+            return assignStateAxis(s, axisKey, "v0", [2*x/tt - v], "v₀ = 2Δx/t − v");
+          }
+          return [s];
+        });
+
+        // If nothing expanded, keep original; otherwise push expanded frontier
+        if (!expandedAny) out.push(st);
+        else out.push(...frontier);
       }
-      return st;
+
+      return out;
     }
 
-    function countKnown(st) {
-      return ["v0","v","a","t","x"].reduce((acc,k)=>acc + (st[k] !== null ? 1 : 0), 0);
+    // Helpers used in applyAxisEquations (kept outside for clarity)
+    function assignStateAxis(st, axisKey, field, values, eqLabel) {
+      const axis = st[axisKey];
+      if (axis[field] !== null) return [st];
+
+      const vals = values.filter(v => Number.isFinite(v));
+      const uniq = [];
+      for (const v of vals) if (!uniq.some(u => closeEnough(u, v))) uniq.push(v);
+      if (uniq.length === 0) return [st];
+
+      const branched = [];
+      for (const v of uniq) {
+        const ns = (axisKey === "axis") ? cloneState1D(st) : cloneState2D(st);
+        ns[axisKey][field] = v;
+        ns.used.add(eqLabel);
+        branched.push(ns);
+      }
+      return branched;
     }
 
-    function checkConsistency(st) {
-      // Evaluate several equations (only when all needed variables exist).
-      // If any mismatch beyond tolerance, mark inconsistent.
+    function assignStateT(st, axisKey, values, eqLabel) {
+      if (st.t !== null) return [st];
+
+      const vals = values.filter(v => Number.isFinite(v));
+      const uniq = [];
+      for (const v of vals) if (!uniq.some(u => closeEnough(u, v))) uniq.push(v);
+      if (uniq.length === 0) return [st];
+
+      const branched = [];
+      for (const v of uniq) {
+        const ns = (axisKey === "axis") ? cloneState1D(st) : cloneState2D(st);
+        ns.t = v;
+        ns.used.add(eqLabel);
+        branched.push(ns);
+      }
+      return branched;
+    }
+
+    // ---------------------------------------
+    // Consistency checking (filters solutions)
+    // ---------------------------------------
+    // We only check an equation if all variables for that equation exist.
+    // If any checked equation fails beyond tolerance, we reject the state.
+
+    function axisConsistent(axis, t) {
+      const v0 = axis.v0, v = axis.v, a = axis.a, x = axis.x;
       const issues = [];
 
-      const v0=st.v0, v=st.v, a=st.a, t=st.t, x=st.x;
+      function check(name, lhs, rhs) {
+        if (!closeEnough(lhs, rhs)) issues.push(name);
+      }
 
-      function addIssue(name, lhs, rhs) {
-        if (!closeEnough(lhs, rhs)) {
-          issues.push(`${name} mismatch`);
+      if (v !== null && v0 !== null && a !== null && t !== null) check("v = v₀ + a t", v, v0 + a*t);
+      if (x !== null && v0 !== null && a !== null && t !== null) check("Δx = v₀ t + ½ a t²", x, v0*t + 0.5*a*t*t);
+      if (x !== null && v !== null && a !== null && t !== null) check("Δx = v t − ½ a t²", x, v*t - 0.5*a*t*t);
+      if (v !== null && v0 !== null && a !== null && x !== null) check("v² = v₀² + 2aΔx", v*v, v0*v0 + 2*a*x);
+      if (x !== null && v0 !== null && v !== null && t !== null) check("Δx = ((v₀+v)/2)t", x, 0.5*(v0+v)*t);
+
+      return { ok: issues.length === 0, issues };
+    }
+
+    function stateConsistent1D(st) {
+      return axisConsistent(st.axis, st.t);
+    }
+
+    function stateConsistent2D(st) {
+      const cx = axisConsistent(st.xAxis, st.t);
+      const cy = axisConsistent(st.yAxis, st.t);
+      return {
+        ok: cx.ok && cy.ok,
+        issues: {
+          x: cx.issues,
+          y: cy.issues
         }
+      };
+    }
+
+    // ---------------------------------------
+    // Solver loop + dedup
+    // ---------------------------------------
+    function stateKey1D(st) {
+      // Quantize to dedupe near-identical solutions
+      const q = (v) => (v === null ? "n" : (Math.round(v * 1e6) / 1e6).toString());
+      return `t:${q(st.t)}|v0:${q(st.axis.v0)}|v:${q(st.axis.v)}|a:${q(st.axis.a)}|x:${q(st.axis.x)}`;
+    }
+
+    function stateKey2D(st) {
+      const q = (v) => (v === null ? "n" : (Math.round(v * 1e6) / 1e6).toString());
+      return [
+        `t:${q(st.t)}`,
+        `v0x:${q(st.xAxis.v0)}`, `vx:${q(st.xAxis.v)}`, `ax:${q(st.xAxis.a)}`, `dx:${q(st.xAxis.x)}`,
+        `v0y:${q(st.yAxis.v0)}`, `vy:${q(st.yAxis.v)}`, `ay:${q(st.yAxis.a)}`, `dy:${q(st.yAxis.x)}`
+      ].join("|");
+    }
+
+    function dedupStates(states, keyFn) {
+      const m = new Map();
+      for (const s of states) {
+        const k = keyFn(s);
+        if (!m.has(k)) m.set(k, s);
+      }
+      return Array.from(m.values());
+    }
+
+    function solve1D(initial, maxRounds=20, maxStates=500) {
+      let states = [initial];
+
+      for (let round = 0; round < maxRounds; round++) {
+        const before = states.length;
+
+        // Apply equations once (may branch)
+        states = applyAxisEquations(states, "axis");
+
+        // Dedup
+        states = dedupStates(states, stateKey1D);
+
+        // Safety cap (avoid explosions)
+        if (states.length > maxStates) states = states.slice(0, maxStates);
+
+        // If no growth and no changes, stop
+        if (states.length === before) break;
       }
 
-      if (v!==null && v0!==null && a!==null && t!==null) addIssue("v = v₀ + a t", v, v0 + a*t);
-      if (x!==null && v0!==null && a!==null && t!==null) addIssue("Δx = v₀ t + ½ a t²", x, v0*t + 0.5*a*t*t);
-      if (x!==null && v!==null && a!==null && t!==null) addIssue("Δx = v t − ½ a t²", x, v*t - 0.5*a*t*t);
-      if (v!==null && v0!==null && a!==null && x!==null) addIssue("v² = v₀² + 2aΔx", v*v, v0*v0 + 2*a*x);
-      if (x!==null && v0!==null && v!==null && t!==null) addIssue("Δx = ((v₀+v)/2)t", x, 0.5*(v0+v)*t);
+      // Filter to consistent solutions
+      const consistent = [];
+      const inconsistent = [];
 
-      return issues;
-    }
-
-    function axisSolvedText(label, st) {
-      return `${label}: v₀=${fmt(st.v0)} m/s, v=${fmt(st.v)} m/s, a=${fmt(st.a)} m/s², t=${fmt(st.t)} s, Δx=${fmt(st.x)} m`;
-    }
-
-    function equationsUsedText(st) {
-      if (!st.used.length) return "—";
-      // Remove duplicates while preserving order (students like a clean list)
-      const seen = new Set();
-      const unique = [];
-      for (const e of st.used) {
-        if (!seen.has(e)) { seen.add(e); unique.push(e); }
+      for (const s of states) {
+        const c = stateConsistent1D(s);
+        if (c.ok) consistent.push(s);
+        else inconsistent.push({ s, issues: c.issues });
       }
-      return unique.map(e => "• " + e).join("\n");
+
+      return { consistent: dedupStates(consistent, stateKey1D), inconsistent };
     }
 
+    function solve2D(initial, maxRounds=25, maxStates=900) {
+      let states = [initial];
+
+      for (let round = 0; round < maxRounds; round++) {
+        const before = states.length;
+
+        // Expand using y equations and x equations (branching)
+        states = applyAxisEquations(states, "yAxis");
+        states = applyAxisEquations(states, "xAxis");
+
+        // Dedup
+        states = dedupStates(states, stateKey2D);
+
+        if (states.length > maxStates) states = states.slice(0, maxStates);
+        if (states.length === before) break;
+      }
+
+      // Filter consistent
+      const consistent = [];
+      const inconsistent = [];
+
+      for (const s of states) {
+        const c = stateConsistent2D(s);
+        if (c.ok) consistent.push(s);
+        else inconsistent.push({ s, issues: c.issues });
+      }
+
+      return { consistent: dedupStates(consistent, stateKey2D), inconsistent };
+    }
+
+    // ---------------------------------------
+    // UI rendering
+    // ---------------------------------------
+    function equationsUsedText(setUsed) {
+      const arr = Array.from(setUsed);
+      if (!arr.length) return "—";
+      // unique already, but keep stable-ish
+      return arr.map(e => "• " + e).join("\n");
+    }
+
+    function render1DSolution(st) {
+      const a = st.axis;
+      return `t=${fmt(st.t)} s, v₀=${fmt(a.v0)} m/s, v=${fmt(a.v)} m/s, a=${fmt(a.a)} m/s², Δx=${fmt(a.x)} m`;
+    }
+
+    function render2DSolution(st) {
+      const x = st.xAxis, y = st.yAxis;
+      return [
+        `t=${fmt(st.t)} s`,
+        `x: v₀x=${fmt(x.v0)} m/s, vx=${fmt(x.v)} m/s, ax=${fmt(x.a)} m/s², Δx=${fmt(x.x)} m`,
+        `y: v₀y=${fmt(y.v0)} m/s, vy=${fmt(y.v)} m/s, ay=${fmt(y.a)} m/s², Δy=${fmt(y.x)} m`,
+      ].join("\n");
+    }
+
+    function summarizeConsistency1D(solCount, inconsistentCount) {
+      if (solCount === 0) return "No consistent solution found.";
+      if (inconsistentCount === 0) return "All derived solutions are consistent (within tolerance).";
+      return `${solCount} consistent solution(s); ${inconsistentCount} rejected as inconsistent.`;
+    }
+
+    function summarizeConsistency2D(solCount, inconsistentCount) {
+      if (solCount === 0) return "No consistent (x+y) solution found.";
+      if (inconsistentCount === 0) return "All derived solutions are consistent in both x and y (within tolerance).";
+      return `${solCount} consistent solution(s); ${inconsistentCount} rejected as inconsistent.`;
+    }
+
+    // ---------------------------------------
+    // Main click handler
+    // ---------------------------------------
     btn.addEventListener("click", () => {
       clearMsg();
+      statusBox.textContent = "—";
+      solvedBox.textContent = "—";
+      eqBox.textContent = "—";
+      checkBox.textContent = "—";
 
       const is2d = mode2d.checked;
 
-      // Shared time
+      // Shared time input (nullable)
       const tShared = nOrNull($("t_shared").value);
       if (Number.isNaN(tShared)) {
         showMsg("Time must be a valid number (or blank).", "error");
         return;
       }
 
+      // Soft requirement: AP prompt says “enter any 3 of 5”.
+      // But we ALSO want to detect inconsistency vs underdetermined cleanly.
+      // So we do not hard-block; we warn if too few.
+      const MIN_KNOWN_HINT = 3;
+
       if (!is2d) {
-        // -------- 1D MODE --------
+        // ---------- 1D ----------
         const v0 = nOrNull($("v0_1d").value);
         const v  = nOrNull($("v_1d").value);
         const a  = nOrNull($("a_1d").value);
@@ -461,104 +806,129 @@
           if (Number.isNaN(val)) { showMsg(`${name} must be a valid number (or blank).`, "error"); return; }
         }
 
-        const st = makeAxisState(v0, v, a, tShared, x);
+        const knownCount =
+          (tShared !== null ? 1 : 0) +
+          (v0 !== null ? 1 : 0) +
+          (v  !== null ? 1 : 0) +
+          (a  !== null ? 1 : 0) +
+          (x  !== null ? 1 : 0);
 
-        if (countKnown(st) < 3) {
-          showMsg("Enter at least 3 known values among v₀, v, a, t, and Δx.", "error");
-          solvedBox.textContent = "—"; eqBox.textContent = "—"; checkBox.textContent = "—";
+        if (knownCount < MIN_KNOWN_HINT) {
+          showMsg("Tip: Typically you need at least 3 known values among v₀, v, a, t, Δx to solve uniquely.", "ok");
+        }
+
+        const initial = makeState1D({ t: tShared, v0, v, a, x });
+        const { consistent, inconsistent } = solve1D(initial);
+
+        // Prefer physically common solutions with t >= 0 if user did not explicitly input t.
+        let sols = consistent;
+        if (tShared === null) {
+          const nonNeg = sols.filter(s => s.t === null || s.t >= -1e-10);
+          if (nonNeg.length) sols = nonNeg;
+        }
+
+        // Classify
+        if (sols.length === 0) {
+          statusBox.textContent = "❌ Inconsistent inputs (no solution satisfies the kinematics equations).";
+          solvedBox.textContent = "—";
+          eqBox.textContent = "—";
+          checkBox.textContent = summarizeConsistency1D(0, inconsistent.length);
           return;
         }
 
-        solveAxis(st);
-
-        // Output
-        solvedBox.textContent = axisSolvedText("1D", st);
-        eqBox.textContent = equationsUsedText(st);
-
-        const issues = checkConsistency(st);
-        if (issues.length) {
-          checkBox.textContent = `Potential inconsistency: ${issues.join(", ")}. (Check signs/units or over-specified inputs.)`;
+        if (sols.length === 1) {
+          statusBox.textContent = "✅ Uniquely solvable (exactly one consistent solution).";
         } else {
-          checkBox.textContent = "Looks consistent with constant-acceleration kinematics (within tolerance).";
+          statusBox.textContent = "⚠️ Multiple solutions (more than one consistent solution).";
         }
 
-        // If still missing something, note it (no drama)
-        if (countKnown(st) < 5) {
-          showMsg("Solved what it could from your inputs. Add another known value to determine the remaining unknown(s).", "ok");
+        // Render solutions (cap to keep UI readable)
+        const MAX_SHOW = 12;
+        const shown = sols.slice(0, MAX_SHOW);
+
+        solvedBox.textContent =
+          shown.map((s, i) => (sols.length > 1 ? `Solution ${i+1}: ` : "") + render1DSolution(s)).join("\n");
+
+        if (sols.length > MAX_SHOW) {
+          solvedBox.textContent += `\n… (${sols.length - MAX_SHOW} more solution(s) not shown)`;
         }
+
+        // Combine equations used across shown solutions (students want to see what triggered)
+        const used = new Set();
+        for (const s of shown) for (const e of s.used) used.add(e);
+        eqBox.textContent = equationsUsedText(used);
+
+        checkBox.textContent = summarizeConsistency1D(sols.length, inconsistent.length);
 
       } else {
-        // -------- 2D MODE --------
-        const ax = makeAxisState(
-          nOrNull($("v0_x").value),
-          nOrNull($("v_x").value),
-          nOrNull($("a_x").value),
-          tShared,
-          nOrNull($("x_x").value)
-        );
-        const ay = makeAxisState(
-          nOrNull($("v0_y").value),
-          nOrNull($("v_y").value),
-          nOrNull($("a_y").value),
-          tShared,
-          nOrNull($("x_y").value)
-        );
+        // ---------- 2D ----------
+        const v0x = nOrNull($("v0_x").value);
+        const vx  = nOrNull($("v_x").value);
+        const ax  = nOrNull($("a_x").value);
+        const dx  = nOrNull($("x_x").value);
 
-        // Validate numeric inputs (NaN = invalid)
+        const v0y = nOrNull($("v0_y").value);
+        const vy  = nOrNull($("v_y").value);
+        const ay  = nOrNull($("a_y").value);
+        const dy  = nOrNull($("x_y").value);
+
         const fields = [
-          ["v₀x", ax.v0], ["vx", ax.v], ["ax", ax.a], ["Δx", ax.x],
-          ["v₀y", ay.v0], ["vy", ay.v], ["ay", ay.a], ["Δy", ay.x]
+          ["v₀x", v0x], ["vx", vx], ["ax", ax], ["Δx", dx],
+          ["v₀y", v0y], ["vy", vy], ["ay", ay], ["Δy", dy]
         ];
         for (const [name,val] of fields) {
           if (Number.isNaN(val)) { showMsg(`${name} must be a valid number (or blank).`, "error"); return; }
         }
 
-        // In 2D, we still want at least 3 knowns per axis *including shared t if present*.
-        // But we allow y to solve time and then propagate to x (very common in projectile motion).
-        const knownX = countKnown(ax);
-        const knownY = countKnown(ay);
+        // Hint if too few knowns overall
+        const known2D =
+          (tShared !== null ? 1 : 0) +
+          (v0x !== null ? 1 : 0) + (vx !== null ? 1 : 0) + (ax !== null ? 1 : 0) + (dx !== null ? 1 : 0) +
+          (v0y !== null ? 1 : 0) + (vy !== null ? 1 : 0) + (ay !== null ? 1 : 0) + (dy !== null ? 1 : 0);
 
-        if (knownX < 2 && knownY < 2 && tShared === null) {
-          showMsg("In 2D mode, give enough info in x or y to start solving (e.g., v₀y, ay, Δy).", "error");
+        if (known2D < 5) {
+          showMsg("Tip: In 2D, you usually need enough info in x and/or y to determine the shared time t.", "ok");
+        }
+
+        const initial = makeState2D({ t: tShared, v0x, vx, ax, dx, v0y, vy, ay, dy });
+        const { consistent, inconsistent } = solve2D(initial);
+
+        // If t not provided, prefer t >= 0 solutions
+        let sols = consistent;
+        if (tShared === null) {
+          const nonNeg = sols.filter(s => s.t === null || s.t >= -1e-10);
+          if (nonNeg.length) sols = nonNeg;
+        }
+
+        if (sols.length === 0) {
+          statusBox.textContent = "❌ Inconsistent inputs (no x+y solution satisfies kinematics).";
+          solvedBox.textContent = "—";
+          eqBox.textContent = "—";
+          checkBox.textContent = summarizeConsistency2D(0, inconsistent.length);
           return;
         }
 
-        // First pass: solve y, then share t if y found it.
-        solveAxis(ay);
-        if (ax.t === null && ay.t !== null) ax.t = ay.t;
-        if (ay.t === null && ax.t !== null) ay.t = ax.t;
-
-        // Solve x now (using shared t if available), then re-solve y in case x found t.
-        solveAxis(ax);
-        if (ay.t === null && ax.t !== null) ay.t = ax.t;
-        solveAxis(ay);
-
-        // Output combined
-        solvedBox.textContent = `${axisSolvedText("x", ax)}\n${axisSolvedText("y", ay)}`;
-
-        const eqLines = [];
-        const ex = equationsUsedText(ax);
-        const ey = equationsUsedText(ay);
-        eqLines.push("x-equations:\n" + ex);
-        eqLines.push("y-equations:\n" + ey);
-        eqBox.textContent = eqLines.join("\n\n");
-
-        const issuesX = checkConsistency(ax);
-        const issuesY = checkConsistency(ay);
-
-        if (issuesX.length || issuesY.length) {
-          const parts = [];
-          if (issuesX.length) parts.push(`x: ${issuesX.join(", ")}`);
-          if (issuesY.length) parts.push(`y: ${issuesY.join(", ")}`);
-          checkBox.textContent = `Potential inconsistency: ${parts.join(" | ")}. (Check signs/units or over-specified inputs.)`;
+        if (sols.length === 1) {
+          statusBox.textContent = "✅ Uniquely solvable (exactly one consistent x+y solution).";
         } else {
-          checkBox.textContent = "x and y results look consistent with constant-acceleration kinematics (within tolerance).";
+          statusBox.textContent = "⚠️ Multiple solutions (more than one consistent x+y solution).";
         }
 
-        // Helpful note if time still unknown
-        if (ax.t === null || ay.t === null) {
-          showMsg("Time is still undetermined. Add enough info in x or y to solve for t (common: v₀y, ay, Δy).", "ok");
+        const MAX_SHOW = 10;
+        const shown = sols.slice(0, MAX_SHOW);
+
+        solvedBox.textContent =
+          shown.map((s, i) => (sols.length > 1 ? `Solution ${i+1}:\n` : "") + render2DSolution(s)).join("\n\n");
+
+        if (sols.length > MAX_SHOW) {
+          solvedBox.textContent += `\n\n… (${sols.length - MAX_SHOW} more solution(s) not shown)`;
         }
+
+        const used = new Set();
+        for (const s of shown) for (const e of s.used) used.add(e);
+        eqBox.textContent = equationsUsedText(used);
+
+        checkBox.textContent = summarizeConsistency2D(sols.length, inconsistent.length);
       }
     });
   </script>
