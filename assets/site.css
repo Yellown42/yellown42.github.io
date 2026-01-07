@@ -84,6 +84,18 @@ h1{
   }
 }
 
+/* Landing page card layout */
+.grid.landing{
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px){
+  .grid.landing{
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+
 .card{
   background: rgba(17,26,46,0.82);
   border: 1px solid var(--line);
@@ -98,12 +110,37 @@ h1{
   font-size: 1.05rem;
 }
 
+/* Landing cards behave like full clickable cards */
+a.card{
+  display:block;
+  color: var(--text);
+  text-decoration: none;
+  transition: transform .12s ease, border-color .12s ease;
+}
+
+a.card:hover{
+  transform: translateY(-2px);
+  border-color: rgba(110,168,255,.6);
+}
+
 label{
   display: block;
   margin: 10px 0 6px;
   color: var(--muted);
   font-size: 0.92rem;
 }
+
+/* Landing page hero */
+header.landing{
+  text-align: center;
+  margin: 24px 0 20px;
+}
+
+header.landing .sub{
+  max-width: 560px;
+  margin: 0 auto;
+}
+
 
 .row{
   display: grid;
