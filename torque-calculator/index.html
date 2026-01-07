@@ -63,6 +63,66 @@
           This calculator assumes you enter the force with a sign (+/−) consistent with your chosen convention.
         </p>
 
+        <!-- SAMPLE PROBLEMS (added) -->
+        <hr style="margin:14px 0;">
+        <section aria-label="Sample Problems">
+          <h3 style="margin:0 0 8px;">Sample Problems</h3>
+          <p class="hint" style="margin-top:0;">
+            Click an example to auto-fill the inputs (including force sign for direction). Then press <strong>Calculate</strong>.
+          </p>
+
+          <div class="out" id="samples">
+            <div class="kv">
+              <div class="k">
+                1) A 50 N force is applied perpendicular to a 0.30 m wrench. Find the torque about the bolt.
+              </div>
+              <div class="v">
+                <button type="button" class="useExampleBtn"
+                  data-force="50" data-lever="0.30" data-angle="90" data-inertia="">
+                  Use this example
+                </button>
+              </div>
+            </div>
+
+            <div class="kv">
+              <div class="k">
+                2) A 25 N force produces a clockwise torque on a 0.40 m lever arm at 60°. If I = 0.20 kg·m², find τ and α.
+              </div>
+              <div class="v">
+                <button type="button" class="useExampleBtn"
+                  data-force="-25" data-lever="0.40" data-angle="60" data-inertia="0.20">
+                  Use this example
+                </button>
+              </div>
+            </div>
+
+            <div class="kv">
+              <div class="k">
+                3) A student pushes with 120 N at 30° to a 0.15 m radius wheel. If I = 0.050 kg·m², find τ and α.
+              </div>
+              <div class="v">
+                <button type="button" class="useExampleBtn"
+                  data-force="120" data-lever="0.15" data-angle="30" data-inertia="0.050">
+                  Use this example
+                </button>
+              </div>
+            </div>
+
+            <div class="kv">
+              <div class="k">
+                4) A 8.0 N force is applied at a 20° angle to a 0.75 m lever arm (counterclockwise). Find the torque.
+              </div>
+              <div class="v">
+                <button type="button" class="useExampleBtn"
+                  data-force="8.0" data-lever="0.75" data-angle="20" data-inertia="">
+                  Use this example
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <!-- /SAMPLE PROBLEMS -->
+
         <button id="calcBtn" type="button">Calculate</button>
       </section>
 
@@ -132,6 +192,31 @@
     const outputEl = $("output");
     const msgEl = $("msg");
     const btn = $("calcBtn");
+
+    // -------------------------
+    // Sample Problems (added)
+    // -------------------------
+    function fillInputs({ force, lever, angle, inertia }) {
+      forceEl.value = (force ?? "");
+      leverEl.value = (lever ?? "");
+      angleEl.value = (angle ?? "");
+      inertiaEl.value = (inertia ?? "");
+      // Keep the page feeling responsive and student-friendly.
+      forceEl.focus();
+      forceEl.select?.();
+      clearMessage();
+    }
+
+    document.querySelectorAll(".useExampleBtn").forEach((b) => {
+      b.addEventListener("click", () => {
+        fillInputs({
+          force: b.getAttribute("data-force"),
+          lever: b.getAttribute("data-lever"),
+          angle: b.getAttribute("data-angle"),
+          inertia: b.getAttribute("data-inertia"),
+        });
+      });
+    });
 
     // Format numbers cleanly for students (avoid huge floating noise).
     function fmt(x) {
