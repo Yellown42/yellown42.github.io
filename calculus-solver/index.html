@@ -51,7 +51,10 @@
         Supports <span class="pill">polynomials ≤ degree 3</span>, <span class="pill">axⁿ</span>,
         <span class="pill">sin(ax)</span>, <span class="pill">cos(ax)</span>, <span class="pill">e^(ax)</span>
       </p>
-    </header>
+    
+<p class="sub">This lightweight AP Calculus helper computes derivatives and indefinite integrals for a small set of common classroom formats (polynomials up to degree 3, <code>sin(ax)</code>, <code>cos(ax)</code>, and <code>e^(ax)</code>).</p>
+<p class="sub">It is <strong>not</strong> a full CAS: it uses simple parsing rules and is designed for quick checking and practice. Runs entirely in your browser—no data is saved.</p>
+</header>
 
     <div class="grid">
       <!-- INPUTS -->
@@ -141,7 +144,34 @@
     </div>
   </div>
 
-  <script>
+  
+    
+
+    <div class="grid">
+      <div class="card">
+        <h2>How to Use</h2>
+        <ul>
+          <li>Enter a function using the supported syntax (examples are clickable above).</li>
+          <li>Select <strong>Derivative</strong> or <strong>Integral</strong>.</li>
+          <li>Click <strong>Compute</strong> to see the result and which rule was applied.</li>
+          <li>If an input isn’t supported, adjust it to match the supported formats list.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>FAQ</h2>
+        <p><strong>Why doesn’t it handle every function?</strong><br>
+        This tool intentionally supports only common AP Calc forms so results stay predictable and easy to verify.</p>
+
+        <p><strong>Is the integral constant included?</strong><br>
+        Yes—indefinite integrals include <code>+ C</code>.</p>
+
+        <p><strong>Does this store my function?</strong><br>
+        No. Everything runs locally in your browser.</p>
+      </div>
+
+</div>
+
+<script>
     // ==========================================================
     // Lightweight AP Calc Differentiation/Integration (Regex-based)
     // ==========================================================
