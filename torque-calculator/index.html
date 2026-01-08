@@ -49,7 +49,10 @@
     <header>
       <h1>Torque & Rotational Motion Calculator</h1>
       <p class="sub">AP Physics C • Uses <span class="pill">τ = rF sinθ</span> and (optional) <span class="pill">α = τ / I</span></p>
-    </header>
+    
+<p class="sub">This AP Physics C practice tool computes rotational torque using <span class="pill">τ = rF sin(θ)</span>. Enter force magnitude, lever arm length, and the angle between <code>r</code> and <code>F</code> to get torque magnitude and direction.</p>
+<p class="sub">Use the direction toggle (CCW + / CW −) to match your sign convention. Optionally enter moment of inertia <code>I</code> to compute angular acceleration <span class="pill">α = τ / I</span>. Runs entirely in your browser—no data is saved.</p>
+</header>
 
     <div class="grid">
       <!-- INPUTS -->
@@ -119,7 +122,33 @@
       </section>
     </div>
 
-    <footer>
+    
+
+    <div class="grid">
+      <div class="card">
+        <h2>How to Use</h2>
+        <ul>
+          <li>Enter <strong>force magnitude</strong> (N) and <strong>lever arm length</strong> (m).</li>
+          <li>Enter <strong>θ</strong> as the angle between the lever arm vector <code>r</code> (pivot → point of application) and the force vector <code>F</code>.</li>
+          <li>Select the torque direction based on your diagram: <strong>CCW (+)</strong> or <strong>CW (−)</strong>.</li>
+          <li>Optional: enter moment of inertia <code>I</code> (kg·m²) to compute angular acceleration <code>α</code>.</li>
+          <li>Click <strong>Calculate</strong> to see results with units.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>FAQ</h2>
+        <p><strong>Is this allowed on the AP exam?</strong><br>
+        No—this is for practice and checking work outside the exam.</p>
+
+        <p><strong>Why does the angle use sin(θ)?</strong><br>
+        Only the component of <code>F</code> perpendicular to <code>r</code> creates torque.</p>
+
+        <p><strong>Does this store my inputs?</strong><br>
+        No. Everything runs locally in your browser.</p>
+      </div>
+    </div>
+
+<footer>
       Tip: θ is the angle between the lever arm vector <code>r</code> (pivot → point of application) and the force <code>F</code>.
     </footer>
   </div>
