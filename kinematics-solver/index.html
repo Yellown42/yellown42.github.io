@@ -49,7 +49,10 @@
     <header>
       <h1>1D & 2D Kinematics Solver</h1>
       <p class="sub">Enter any <span class="pill">3</span> of <span class="pill">v₀, v, a, t, Δx</span>. Optional <span class="pill">2D</span> solves x and y separately.</p>
-    </header>
+    
+<p class="sub">This AP Physics C kinematics solver helps you practice constant-acceleration motion in 1D and simple 2D (x/y components). Enter known values and it will solve for the rest using standard AP kinematics equations.</p>
+<p class="sub">The solver reports whether your inputs are <strong>uniquely solvable</strong>, have <strong>multiple valid solutions</strong> (for example, two times), or are <strong>inconsistent</strong>. Runs entirely in your browser—no data is saved.</p>
+</header>
 
     <div class="grid">
       <!-- INPUTS -->
@@ -194,7 +197,34 @@
     </div>
   </div>
 
-  <script>
+  
+    
+
+    <div class="grid">
+      <div class="card">
+        <h2>How to Use</h2>
+        <ul>
+          <li>Fill in any known values (with units) for <code>v₀</code>, <code>v</code>, <code>a</code>, <code>t</code>, and <code>Δx</code>.</li>
+          <li>Switch to <strong>2D</strong> mode only if you want to solve x and y components separately.</li>
+          <li>Click <strong>Solve</strong>. If time is quadratic, the solver will list all valid times.</li>
+          <li>Check the <strong>Solution status</strong> message to see whether inputs are unique, multiple, or inconsistent.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>FAQ</h2>
+        <p><strong>Why do I sometimes get two times?</strong><br>
+        Many motion problems lead to a quadratic in <code>t</code>, which can produce two valid solutions (for example, going up and coming down).</p>
+
+        <p><strong>What does “inconsistent inputs” mean?</strong><br>
+        The provided values contradict the kinematics equations (often due to a sign, unit, or copied value issue).</p>
+
+        <p><strong>Does this work for changing acceleration?</strong><br>
+        No—this tool is for constant acceleration only (standard AP kinematics).</p>
+      </div>
+
+</div>
+
+<script>
     // ==========================================
     // AP Physics C Kinematics Solver (1D + 2D)
     // ==========================================
